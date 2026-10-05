@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1B2A41">
+<title>Banca e carte · Password</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body data-cat="banca">
+<header id="top">
+  <a id="bHome" href="index.html" aria-label="Home">🏠</a>
+  <input id="q" type="search" placeholder="Cerca…" autocomplete="off" aria-label="Cerca">
+  <button id="bAdd" aria-label="Aggiungi">➕</button>
+  <button id="bEdit" aria-label="Abilita modifica">✏️</button>
+  <button id="bSave" aria-label="Salva">💾</button>
+</header>
+<main id="main"></main>
+<nav id="bar"></nav>
+<div id="toast" role="status"></div>
+<div id="lb" hidden></div>
+<datalist id="tipi"><option>Visa</option><option>Mastercard</option><option>Maestro</option><option>Bancomat</option><option>PostePay</option><option>American Express</option><option>Carta di debito</option><option>Carta di credito</option><option>Prepagata</option></datalist>
+<script src="app.js"></script>
+</body>
+</html>
