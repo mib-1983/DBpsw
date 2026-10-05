@@ -128,7 +128,7 @@ function expBlock(){
 /* ---------- viste ---------- */
 function home(){
   const n=id=>src().entries.filter(e=>e.cat===id).length;
-   return `<h1>Le mie password</h1><p class="mu sub">Version 1.1.3<br>I dati sono salvati solo su questo dispositivo: esegui regolarmente il backup per non perderli.<span style="display:block;margin-top:8px">Ultimo backup: ${lastBackup()?new Date(lastBackup()).toLocaleDateString('it-IT'):'mai'}</span><span style="display:block;margin-top:8px">Ultima modifica: ${lastMod()?new Date(lastMod()).toLocaleDateString('it-IT'):'—'}</span><span style="display:block;margin-top:8px">Password salvate: ${src().entries.length}</span></p>${expBlock()}<div class="grid">${C.map(c=>`<a class="cat" href="${c.p}">${ic(c.i)}<span>${c.n}</span><small>${pl(n(c.id))}</small></a>`).join('')}</div>
+   return `<h1>Le mie password</h1><p class="mu sub">Version 1.2.4<br>I dati sono salvati solo su questo dispositivo: esegui regolarmente il backup per non perderli.<span style="display:block;margin-top:8px">Ultimo backup: ${lastBackup()?new Date(lastBackup()).toLocaleDateString('it-IT'):'mai'}</span><span style="display:block;margin-top:8px">Ultima modifica: ${lastMod()?new Date(lastMod()).toLocaleDateString('it-IT'):'—'}</span><span style="display:block;margin-top:8px">Password salvate: ${src().entries.length}</span></p>${expBlock()}<div class="grid">${C.map(c=>`<a class="cat" href="${c.p}">${ic(c.i)}<span>${c.n}</span><small>${pl(n(c.id))}</small></a>`).join('')}</div>
   <div class="bk"><button data-act="exp">Esporta backup</button><button data-act="imp">Importa backup</button><small>Spazio usato: ${kb()} KB su circa 5000 KB</small></div>`;
 }
 const row=(e,showCat)=>{
@@ -208,19 +208,18 @@ function copy(t){
   const fb=()=>{const a=document.createElement('textarea');a.value=t;a.style.cssText='position:fixed;opacity:0';document.body.appendChild(a);a.select();try{document.execCommand('copy');ok()}catch(e){toast('Copia non riuscita')}a.remove()};
   if(navigator.clipboard)navigator.clipboard.writeText(t).then(ok,fb);else fb();
 }
-async function visit(v){   // apre il sito; se è solo un nome, prova a indovinare il dominio e verifica che risponda, altrimenti cerca su Google
+async function visit(v){   // apre il sito; se è solo un nome, prova prima .it poi .com, altrimenti cerca su Google
   v=(v||'').trim();if(!v)return;
   const win=window.open('','_blank');   // apro subito la scheda: un redirect fatto dopo l'attesa verrebbe bloccato come popup
   const go=u=>win?win.location=u:window.open(u,'_blank','noopener');
   if(/^https?:\/\//i.test(v))return go(v);
   if(/^[\w-]+(\.[\w-]+)+(\/.*)?$/.test(v))return go('https://'+v);
-  const guess='https://'+v.toLowerCase().replace(/\s+/g,'')+'.com';
-  try{
-    await fetch(guess,{mode:'no-cors',signal:AbortSignal.timeout(2500)});
-    go(guess);
-  }catch(e){
-    go('https://www.google.com/search?q='+encodeURIComponent(v));
+  const slug=v.toLowerCase().replace(/\s+/g,'');
+  for(const tld of['it','com']){
+    const guess='https://'+slug+'.'+tld;
+    try{await fetch(guess,{mode:'no-cors',signal:AbortSignal.timeout(2500)});return go(guess)}catch(e){}
   }
+  go('https://www.google.com/search?q='+encodeURIComponent(v));
 }
 function shrink(f){   // ridimensiona la foto (max 1000px, JPEG) per non riempire il localStorage
   return new Promise((ok,ko)=>{
