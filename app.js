@@ -127,7 +127,7 @@ function expBlock(){
 /* ---------- viste ---------- */
 function home(){
   const n=id=>src().entries.filter(e=>e.cat===id).length;
-   return `<h1>Le mie password</h1><p class="mu sub">I dati sono salvati solo su questo dispositivo: esegui regolarmente il backup per non perderli.<span style="display:block;margin-top:8px"><span style="display:block;margin-top:8px">Ultima modifica: ${lastMod()?new Date(lastMod()).toLocaleDateString('it-IT'):'—'}</span><span style="display:block;margin-top:8px">Password salvate: ${src().entries.length}</span></p>${expBlock()}<div class="grid">${C.map(c=>`<a class="cat" href="${c.p}">${ic(c.i)}<span>${c.n}</span><small>${pl(n(c.id))}</small></a>`).join('')}</div>
+   return `<h1>Le mie password</h1><p class="mu sub">I dati sono salvati solo su questo dispositivo: esegui regolarmente il backup per non perderli.<span style="display:block;margin-top:8px">Ultimo backup: ${lastBackup()?new Date(lastBackup()).toLocaleDateString('it-IT'):'mai'}</span><span style="display:block;margin-top:8px">Ultima modifica: ${lastMod()?new Date(lastMod()).toLocaleDateString('it-IT'):'—'}</span><span style="display:block;margin-top:8px">Password salvate: ${src().entries.length}</span></p>${expBlock()}<div class="grid">${C.map(c=>`<a class="cat" href="${c.p}">${ic(c.i)}<span>${c.n}</span><small>${pl(n(c.id))}</small></a>`).join('')}</div>
   <div class="bk"><button data-act="exp">Esporta backup</button><button data-act="imp">Importa backup</button><small>Spazio usato: ${kb()} KB su circa 5000 KB</small></div>`;
 }
 const row=(e,showCat)=>{
@@ -325,7 +325,6 @@ function onClick(ev){
     case 'eyeIn':{const i=b.parentNode.querySelector('input');i.type=i.type==='password'?'text':'password';b.innerHTML=ic(i.type==='password'?'eye':'eyeoff');break}
     case 'copy':{const t=cat(e.cat).f.find(x=>x[0]===d.k)[2];copy(fmt(t,e.f[d.k]));break}
     case 'pa':$('#fPhoto').click();break;
-    case 'pc':$('#fCam').click();break;
     case 'pd':e.photos.splice(+d.i,1);mark();render();break;
     case 'pv':lb(`<img src="${esc(e.photos[+d.i])}" data-act="close" alt="">`);break;
     case 'close':closeLb();break;
@@ -410,10 +409,6 @@ bind('#bSave','click',saveAll);
 bind('#q','input',search);
 bind('#fPhoto','change',addPhoto);
 bind('#fImp','change',importData);
-const fCam=document.createElement('input');   // scatto diretto con la fotocamera
-fCam.type='file';fCam.accept='image/*';fCam.id='fCam';fCam.hidden=true;fCam.setAttribute('capture','environment');
-fCam.addEventListener('change',addPhoto);
-document.body.appendChild(fCam);
 
 $('#bar').innerHTML=C.map(c=>`<a href="${c.p}"${c.id===PAGE?' class="on"':''}>${ic(c.i)}${c.s}</a>`).join('');
 [['#bHome','home'],['#bAdd','plus'],['#bEdit','edit'],['#bSave','save']].forEach(([s,n])=>{$(s).innerHTML=ic(n)});
