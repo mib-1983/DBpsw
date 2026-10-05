@@ -128,7 +128,7 @@ function expBlock(){
 /* ---------- viste ---------- */
 function home(){
   const n=id=>src().entries.filter(e=>e.cat===id).length;
-   return `<h1>Le mie password</h1><p class="mu sub">Version 2.2.6<br>I dati sono salvati solo su questo dispositivo: esegui regolarmente il backup per non perderli.<span style="display:block;margin-top:8px">Ultimo backup: ${lastBackup()?new Date(lastBackup()).toLocaleDateString('it-IT'):'mai'}</span><span style="display:block;margin-top:8px">Ultima modifica: ${lastMod()?new Date(lastMod()).toLocaleDateString('it-IT'):'—'}</span><span style="display:block;margin-top:8px">Password salvate: ${src().entries.length}</span></p>${expBlock()}<div class="grid">${C.map(c=>`<a class="cat" href="${c.p}">${ic(c.i)}<span>${c.n}</span><small>${pl(n(c.id))}</small></a>`).join('')}</div>
+   return `<h1>Le mie password</h1><p class="mu sub">Version 2.2.7<br>I dati sono salvati solo su questo dispositivo: esegui regolarmente il backup per non perderli.<span style="display:block;margin-top:8px">Ultimo backup: ${lastBackup()?new Date(lastBackup()).toLocaleDateString('it-IT'):'mai'}</span><span style="display:block;margin-top:8px">Ultima modifica: ${lastMod()?new Date(lastMod()).toLocaleDateString('it-IT'):'—'}</span><span style="display:block;margin-top:8px">Password salvate: ${src().entries.length}</span></p>${expBlock()}<div class="grid">${C.map(c=>`<a class="cat" href="${c.p}">${ic(c.i)}<span>${c.n}</span><small>${pl(n(c.id))}</small></a>`).join('')}</div>
   <div class="bk"><button data-act="exp">Esporta backup</button><button data-act="imp">Importa backup</button><small>Spazio usato: ${kb()} KB su circa 5000 KB</small></div>`;
 }
 const row=(e,showCat)=>{
@@ -339,13 +339,12 @@ function onClick(ev){
     case 'del':if(confirm('Eliminare questa voce?')){draft.entries=draft.entries.filter(x=>x.id!==e.id);mark();go(up(e))}break;
     case 'exp':if(dirty)toast('Salva le modifiche prima di esportare');else if(accessPw())exportData(accessPw());else pwSheet('exp');break;
     case 'imp':if(edit)toast('Salva o annulla le modifiche prima di importare');else pwSheet('imp');break;
-        case 'shareGo':{
+    case 'shareGo':{
       const f=pendingFile;if(!f)break;
-      if(navigator.canShare&&navigator.canShare({files:[f]})){
-        navigator.share({files:[f],title:'Backup password'})
-          .then(()=>{setLastBackup();pendingFile=null;closeLb()})
-          .catch(e=>{if(e.name!=='AbortError')toast('Errore condivisione: '+e.name)});
-      }else toast('Condivisione non supportata');
+      const t=new File([f],f.name.replace(/\.json$/,'.txt'),{type:'text/plain'});
+      navigator.share({files:[t],title:'Backup password'})
+        .then(()=>{setLastBackup();pendingFile=null;closeLb()})
+        .catch(e=>{if(e.name!=='AbortError')toast(e.name+': '+e.message)});
       break}
     case 'dlGo':{
       const f=pendingFile;if(!f)break;
