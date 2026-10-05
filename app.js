@@ -128,7 +128,7 @@ function expBlock(){
 /* ---------- viste ---------- */
 function home(){
   const n=id=>src().entries.filter(e=>e.cat===id).length;
-   return `<h1>Le mie password</h1><p class="mu sub">Version 2.2.4<br>I dati sono salvati solo su questo dispositivo: esegui regolarmente il backup per non perderli.<span style="display:block;margin-top:8px">Ultimo backup: ${lastBackup()?new Date(lastBackup()).toLocaleDateString('it-IT'):'mai'}</span><span style="display:block;margin-top:8px">Ultima modifica: ${lastMod()?new Date(lastMod()).toLocaleDateString('it-IT'):'—'}</span><span style="display:block;margin-top:8px">Password salvate: ${src().entries.length}</span></p>${expBlock()}<div class="grid">${C.map(c=>`<a class="cat" href="${c.p}">${ic(c.i)}<span>${c.n}</span><small>${pl(n(c.id))}</small></a>`).join('')}</div>
+   return `<h1>Le mie password</h1><p class="mu sub">Version 2.2.6<br>I dati sono salvati solo su questo dispositivo: esegui regolarmente il backup per non perderli.<span style="display:block;margin-top:8px">Ultimo backup: ${lastBackup()?new Date(lastBackup()).toLocaleDateString('it-IT'):'mai'}</span><span style="display:block;margin-top:8px">Ultima modifica: ${lastMod()?new Date(lastMod()).toLocaleDateString('it-IT'):'—'}</span><span style="display:block;margin-top:8px">Password salvate: ${src().entries.length}</span></p>${expBlock()}<div class="grid">${C.map(c=>`<a class="cat" href="${c.p}">${ic(c.i)}<span>${c.n}</span><small>${pl(n(c.id))}</small></a>`).join('')}</div>
   <div class="bk"><button data-act="exp">Esporta backup</button><button data-act="imp">Importa backup</button><small>Spazio usato: ${kb()} KB su circa 5000 KB</small></div>`;
 }
 const row=(e,showCat)=>{
@@ -263,25 +263,14 @@ function pwSheet(mode){   // mode: 'exp' (imposta password) | 'imp' (chiedi pass
     <button data-act="${mode}Go">${exp?'Esporta':'Continua'}</button><button data-act="close">Annulla</button></div>`);
   setTimeout(()=>{const i=$('#pw1');if(i)i.focus()},0);
 }
+let pendingFile=null;
 async function exportData(pw){
   try{
+    toast('Preparo il backup…');
     const enc=await encryptJSON(data,pw);
     const name='password-backup-'+new Date().toISOString().slice(0,10)+'.json';
-    const file=new File([enc],name,{type:'application/json'});
-    if(!navigator.share){
-      toast('Condivisione non disponibile');
-    }else if(!navigator.canShare||!navigator.canShare({files:[file]})){
-      toast('Condivisione file non supportata');
-    }else{
-      try{await navigator.share({files:[file],title:'Backup password'});setLastBackup();return}
-      catch(e){if(e.name==='AbortError')return;toast('Errore condivisione: '+e.name)}
-    }
-    const a=document.createElement('a');
-    a.href=URL.createObjectURL(new Blob([enc],{type:'application/json'}));
-    a.download=name;
-    document.body.appendChild(a);a.click();a.remove();
-    setTimeout(()=>URL.revokeObjectURL(a.href),1000);
-    setLastBackup();
+    pendingFile=new File([enc],name,{type:'application/json'});
+    lb(`<div class="sheet"><h1>Backup pronto</h1><p class="mu">Tocca "Salva / Condividi" e scegli dove metterlo (Drive, File, ecc.).</p><button data-act="shareGo">Salva / Condividi</button><button data-act="dlGo">Scarica in Download</button><button data-act="close">Annulla</button></div>`);
   }catch(e){toast('Esportazione non riuscita')}
 }
 function saveAll(){
@@ -350,6 +339,21 @@ function onClick(ev){
     case 'del':if(confirm('Eliminare questa voce?')){draft.entries=draft.entries.filter(x=>x.id!==e.id);mark();go(up(e))}break;
     case 'exp':if(dirty)toast('Salva le modifiche prima di esportare');else if(accessPw())exportData(accessPw());else pwSheet('exp');break;
     case 'imp':if(edit)toast('Salva o annulla le modifiche prima di importare');else pwSheet('imp');break;
+        case 'shareGo':{
+      const f=pendingFile;if(!f)break;
+      if(navigator.canShare&&navigator.canShare({files:[f]})){
+        navigator.share({files:[f],title:'Backup password'})
+          .then(()=>{setLastBackup();pendingFile=null;closeLb()})
+          .catch(e=>{if(e.name!=='AbortError')toast('Errore condivisione: '+e.name)});
+      }else toast('Condivisione non supportata');
+      break}
+    case 'dlGo':{
+      const f=pendingFile;if(!f)break;
+      const a=document.createElement('a');
+      a.href=URL.createObjectURL(f);a.download=f.name;
+      document.body.appendChild(a);a.click();a.remove();
+      setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+      setLastBackup();pendingFile=null;closeLb();break}
     case 'expGo':{const p1=$('#pw1').value,p2=$('#pw2').value;if(p1.length<4){toast('Password troppo corta (minimo 4 caratteri)');break}if(p1!==p2){toast('Le password non coincidono');break}closeLb();exportData(p1);break}
     case 'impGo':{const p=$('#pw1').value;if(!p){toast('Inserisci la password');break}impPw=p;closeLb();$('#fImp').click();break}
   }
