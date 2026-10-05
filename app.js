@@ -2,7 +2,7 @@
    Ogni pagina categoria dichiara <body data-cat="..."> (gli id sono in C qui sotto); la Home non ha data-cat. */
 const KEY='pwm_v1';
 const MSG='Ci sono modifiche non salvate. Scartarle?';
-const B=[['nome','Sito/App'],['email','E-mail','e'],['pw','Password','s'],['user','Nome Utente'],['altro','Altro','a']];
+const B=[['nome','Sito/App','u'],['email','E-mail','e'],['pw','Password','s'],['user','Nome Utente'],['altro','Altro','a']];
 // tipi di campo: e=email, s=segreto, n=segreto numerico, d=data, m=mese, a=testo lungo, p=foto
 const C=[
  {id:'doc',p:'documenti.html',i:'doc',n:'Documenti',s:'Documenti',f:[['nome','Proprietario'],['tipo','Documento'],['num','Numero'],['email','E-mail','e'],['user','Nome Utente'],['pw','Password','s'],['pin','PIN','n'],['puk','PUK','n'],['ril','Data di rilascio','d'],['da','Rilasciato da'],['scad','Scadenza','d'],['altro','Altro','a'],['foto','Foto','p']]},
@@ -36,7 +36,8 @@ const ICON={
  tv:'<rect x="2" y="7" width="20" height="15" rx="2"/><path d="M17 2l-5 5-5-5"/>',
  zap:'<path d="M13 2L3 14h9l-1 8 10-12h-9z"/>',
  user:'<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
- users:'<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>'
+ users:'<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
+ link:'<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14L21 3"/>'
 };
 const ic=n=>`<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">${ICON[n]}</svg>`;
 const pl=n=>n===1?'1 voce':n+' voci';
@@ -127,7 +128,7 @@ function expBlock(){
 /* ---------- viste ---------- */
 function home(){
   const n=id=>src().entries.filter(e=>e.cat===id).length;
-   return `<h1>Le mie password</h1><p class="mu sub">I dati sono salvati solo su questo dispositivo: esegui regolarmente il backup per non perderli.<span style="display:block;margin-top:8px">Ultimo backup: ${lastBackup()?new Date(lastBackup()).toLocaleDateString('it-IT'):'mai'}</span><span style="display:block;margin-top:8px">Ultima modifica: ${lastMod()?new Date(lastMod()).toLocaleDateString('it-IT'):'—'}</span><span style="display:block;margin-top:8px">Password salvate: ${src().entries.length}</span></p>${expBlock()}<div class="grid">${C.map(c=>`<a class="cat" href="${c.p}">${ic(c.i)}<span>${c.n}</span><small>${pl(n(c.id))}</small></a>`).join('')}</div>
+   return `<h1>Le mie password</h1><p class="mu sub">Version 1.1.3<br>I dati sono salvati solo su questo dispositivo: esegui regolarmente il backup per non perderli.<span style="display:block;margin-top:8px">Ultimo backup: ${lastBackup()?new Date(lastBackup()).toLocaleDateString('it-IT'):'mai'}</span><span style="display:block;margin-top:8px">Ultima modifica: ${lastMod()?new Date(lastMod()).toLocaleDateString('it-IT'):'—'}</span><span style="display:block;margin-top:8px">Password salvate: ${src().entries.length}</span></p>${expBlock()}<div class="grid">${C.map(c=>`<a class="cat" href="${c.p}">${ic(c.i)}<span>${c.n}</span><small>${pl(n(c.id))}</small></a>`).join('')}</div>
   <div class="bk"><button data-act="exp">Esporta backup</button><button data-act="imp">Importa backup</button><small>Spazio usato: ${kb()} KB su circa 5000 KB</small></div>`;
 }
 const row=(e,showCat)=>{
@@ -172,7 +173,7 @@ function detail(){
       const inp=t==='a'?`<textarea ${a} rows="3">${esc(v)}</textarea>`:`<input ${a} type="${ty}"${t==='n'?' inputmode="numeric"':''}${k==='tipo'?(e.cat==='doc'?' list="tipiDoc"':' list="tipi"'):k===OWN[e.cat]?' list="owners"':t==='e'?' list="emails"':''} value="${esc(v)}">`;
       h+=`<div class="f"><div class="fv"><label>${l}</label>${inp}</div>${sec(t)?`<button data-act="eyeIn" aria-label="Mostra">${ic(v?'eye':'eyeoff')}</button>`:''}</div>`;
     }else if(v){
-      h+=`<div class="f"><div class="fv"><label>${l}</label><span id="v-${k}"${sec(t)||k==='num'?' class="mono"':''}>${sec(t)?'••••••••':esc(fmt(t,v))}</span></div>${sec(t)?`<button data-act="eye" data-k="${k}" aria-label="Mostra">${ic('eye')}</button>`:''}<button data-act="copy" data-k="${k}" aria-label="Copia">${ic('copy')}</button></div>`;
+      h+=`<div class="f"><div class="fv"><label>${l}</label><span id="v-${k}"${sec(t)||k==='num'?' class="mono"':''}>${sec(t)?'••••••••':esc(fmt(t,v))}</span></div>${sec(t)?`<button data-act="eye" data-k="${k}" aria-label="Mostra">${ic('eye')}</button>`:''}${t==='u'?`<button data-act="visit" data-k="${k}" aria-label="Apri sito">${ic('link')}</button>`:''}<button data-act="copy" data-k="${k}" aria-label="Copia">${ic('copy')}</button></div>`;
     }
   }
   h+='</div>';
@@ -206,6 +207,20 @@ function copy(t){
   const ok=()=>toast('Copiato');
   const fb=()=>{const a=document.createElement('textarea');a.value=t;a.style.cssText='position:fixed;opacity:0';document.body.appendChild(a);a.select();try{document.execCommand('copy');ok()}catch(e){toast('Copia non riuscita')}a.remove()};
   if(navigator.clipboard)navigator.clipboard.writeText(t).then(ok,fb);else fb();
+}
+async function visit(v){   // apre il sito; se è solo un nome, prova a indovinare il dominio e verifica che risponda, altrimenti cerca su Google
+  v=(v||'').trim();if(!v)return;
+  const win=window.open('','_blank');   // apro subito la scheda: un redirect fatto dopo l'attesa verrebbe bloccato come popup
+  const go=u=>win?win.location=u:window.open(u,'_blank','noopener');
+  if(/^https?:\/\//i.test(v))return go(v);
+  if(/^[\w-]+(\.[\w-]+)+(\/.*)?$/.test(v))return go('https://'+v);
+  const guess='https://'+v.toLowerCase().replace(/\s+/g,'')+'.com';
+  try{
+    await fetch(guess,{mode:'no-cors',signal:AbortSignal.timeout(2500)});
+    go(guess);
+  }catch(e){
+    go('https://www.google.com/search?q='+encodeURIComponent(v));
+  }
 }
 function shrink(f){   // ridimensiona la foto (max 1000px, JPEG) per non riempire il localStorage
   return new Promise((ok,ko)=>{
@@ -324,6 +339,7 @@ function onClick(ev){
     case 'eye':{const s=$('#v-'+d.k),on=s.dataset.on==='1';s.dataset.on=on?'':'1';s.textContent=on?'••••••••':e.f[d.k];b.innerHTML=ic(on?'eye':'eyeoff');break}
     case 'eyeIn':{const i=b.parentNode.querySelector('input');i.type=i.type==='password'?'text':'password';b.innerHTML=ic(i.type==='password'?'eye':'eyeoff');break}
     case 'copy':{const t=cat(e.cat).f.find(x=>x[0]===d.k)[2];copy(fmt(t,e.f[d.k]));break}
+    case 'visit':visit(e.f[d.k]);break
     case 'pa':$('#fPhoto').click();break;
     case 'pd':e.photos.splice(+d.i,1);mark();render();break;
     case 'pv':lb(`<img src="${esc(e.photos[+d.i])}" data-act="close" alt="">`);break;
