@@ -1,0 +1,85 @@
+per pubblicarla su git hub le modifiche sono:
+
+
+_INDEX HTML AGGIUNTA QUESTA PARTE:
+
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#21497e">
+
+<script>
+if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("./service-worker.js");
+}
+</script>
+
+
+_CREATI FILE:
+manifest.json
+service-worker.js
+file icona
+
+
+
+
+
+perfetto. quindi riepiloghiamo:
+ho 4 pulsanti:
+_esporta - importa backup : scelgo io manuialmente dove mettere i backup (serve aggiormente se un utente non ha un account google per usare drive
+_collega su google drive ora: mi collega l'account al mio google drive in maniera permanente
+UNA VOLTA COLLEGATO L'ACCOUNT IL TASTO DIVENTA:
+_salva su google drive ora: cliccandoci mi effettua il salvataggio immediato su drive sovrascrivendo il precedente
+_ripristina da google drive: mi ripristina il backup in caso di disinstallazione dell'app
+
+Quasi tutto giusto. Ti correggo tre punti.
+
+Giusto
+
+Esporta / Importa backup: scegli tu dove salvare, ed è l'opzione per chi non ha un account Google.
+Salva su Google Drive ora: salva subito e sovrascrive il backup precedente, senza creare copie.
+
+Da precisare
+
+1_"Collega Google Drive" non è un collegamento permanente.
+    Il permesso che dai a Google resta finché non lo revochi, ma l'accesso dura circa un'ora.
+    Passato quel tempo, o dopo aver chiuso e riaperto l'app, Google può mostrare di nuovo il breve popup di conferma. Il pulsante "Collega" salva anche subito il primo backup.
+2_Il salvataggio su Drive è anche automatico, e questo non l'avevi scritto.
+    Dopo il collegamento, ogni volta che tocchi Salva nell'app per registrare una modifica, il backup viene aggiornato anche su Drive.
+    Il pulsante "Salva su Google Drive ora" serve solo per forzarlo a mano, o per riprovare se un salvataggio non è riuscito (in Home vedi "modifiche da sincronizzare").
+3_"Ripristina da Google Drive" non serve solo se disinstalli l'app.
+    Va bene in ogni caso in cui perdi i dati: cancellazione dei dati di Chrome, telefono nuovo o app reinstallata.
+    Funziona anche prima di collegare Drive.
+    Richiede la password con cui è stato cifrato il backup, e aggiunge le voci mancanti senza toccare quelle già presenti.
+
+
+
+    **Dove stanno i dati**
+- Copia di lavoro: nel localStorage di Chrome sul telefono di ogni persona. Non è condivisa con nessuno.
+- Copia di sicurezza: file cifrato (AES-256), con la password di accesso come chiave.
+
+**Salvataggio**
+- **Tocchi Salva** → i dati vanno nel localStorage. Se Drive è collegato, parte in automatico anche il backup su Drive.
+- **Su Drive** → file `dbpsw-backup.json` nella cartella nascosta dell'app, nel Drive dell'utente. Viene sempre sovrascritto, senza copie.
+- **Manuale** (Esporta backup) → scegli tu dove mandare il file dal menu di condivisione.
+
+**Ripristino**
+- **Ripristina da Drive** → serve la password del backup. Aggiunge le voci mancanti, senza toccare quelle presenti.
+- **Importa backup** → stessa logica, partendo da un file.
+
+**Più persone**
+- Ognuno ha il proprio telefono, i propri dati e il proprio Drive.
+- Nessuno vede i dati degli altri. Tu come sviluppatore non vedi niente.
+- Ogni amico va aggiunto come utente di prova su Google Cloud (fino a 100), e vedrà l'avviso "app non verificata".
+
+**Piattaforme**
+
+| Utente | Backup automatico | Backup manuale |
+|---|---|---|
+| Android con Google | Drive | Qualsiasi app dal menu di condivisione |
+| iPhone con account Google | Drive | Salva su File / iCloud |
+| Senza account Google | No | Sì (unica opzione) |
+
+**Limiti da ricordare**
+- Cancellando i dati di Chrome si perde la copia locale. Il backup su Drive resta, ma bisogna ripristinarlo.
+- L'accesso a Google dura circa un'ora: ogni tanto può riapparire un breve popup.
+- Con due dispositivi per la stessa persona vince l'ultimo che salva. Il ripristino non aggiorna le voci già presenti né elimina quelle cancellate.
+- La password di accesso è anche quella dei backup: se la perdi, non c'è recupero.
