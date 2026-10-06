@@ -426,7 +426,7 @@ function showLock(){
       b.disabled=true;
       const ok=await driveRestore(p,err);   // chiamata subito, senza attese prima
       b.disabled=false;
-      if(!ok)return;
+      if(!ok){$('#lk1').value='';return}
       try{await saveLock(p)}catch(e){return err('Salvataggio non riuscito')}
       unlock();return;
     }
