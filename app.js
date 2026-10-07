@@ -54,25 +54,54 @@ const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 const kb=()=>Math.round((localStorage.getItem(KEY)||'').length/1024);
 
 /* ---------- dati (localStorage) ---------- */
-function load(){
+let dKey=null,dSalt=null,legacy=false,blocked=false,bootP=null;
+async function atRestKey(pw,salt){   // chiave AES derivata dalla password di accesso, tenuta solo in memoria
+  if(dKey&&(!salt||b64(salt)===b64(dSalt)))return dKey;
+  dSalt=salt||crypto.getRandomValues(new Uint8Array(16));
+  dKey=await deriveKey(pw,dSalt);
+  return dKey;
+}
+const plainData=()=>{try{const o=JSON.parse(localStorage.getItem(KEY));return o&&Array.isArray(o.entries)?o:null}catch(e){return null}};
+async function load(){
   const r=localStorage.getItem(KEY);
   if(!r)return{entries:[]};
-  try{const d=JSON.parse(r);if(Array.isArray(d.entries))return d}catch(e){}
+  let o=null;
+  try{o=JSON.parse(r)}catch(e){}
+  if(o&&Array.isArray(o.entries)){legacy=true;return o}   // vecchio formato in chiaro: lo cifro subito dopo
+  if(o&&o.ct){   // se non riesco a decifrare, errore: NON restituisco un archivio vuoto
+    const key=await atRestKey(accessPw(),unb64(o.salt));
+    const pt=await crypto.subtle.decrypt({name:'AES-GCM',iv:unb64(o.iv)},key,unb64(o.ct));
+    const d=JSON.parse(td.decode(pt));
+    if(!Array.isArray(d.entries))throw new Error('formato');
+    return d;
+  }
   try{localStorage.setItem(KEY+'_bak',r)}catch(e){}   // dati illeggibili: ne tengo una copia
   return{entries:[]};
 }
-function persist(){try{localStorage.setItem(KEY,JSON.stringify(data));try{localStorage.setItem(LMK,Date.now())}catch(e){}return true}catch(e){return false}}
+async function persist(silent){
+  if(blocked)return false;
+  try{
+    const pw=accessPw();if(!pw)return false;
+    const key=await atRestKey(pw);
+    const iv=crypto.getRandomValues(new Uint8Array(12));
+    const ct=await crypto.subtle.encrypt({name:'AES-GCM',iv},key,te.encode(JSON.stringify(data)));
+    localStorage.setItem(KEY,JSON.stringify({v:2,salt:b64(dSalt),iv:b64(iv),ct:b64(ct)}));
+    if(!silent){try{localStorage.setItem(LMK,Date.now())}catch(e){}}
+    return true;
+  }catch(e){return false}
+}
+
 const LBK=KEY+'_lastbk';
 const LMK=KEY+'_lastmod';
 const lastMod=()=>+localStorage.getItem(LMK)||0;
 const lastBackup=()=>+localStorage.getItem(LBK)||0;
 const setLastBackup=()=>{try{localStorage.setItem(LBK,Date.now())}catch(e){}};
-const backupDue=()=>Date.now()-Math.max(lastBackup(),+localStorage.getItem(DLK)||0)>30*86400000;
+const backupDue=()=>!driveOn()&&Date.now()-lastBackup()>30*86400000;
 function backupReminder(){
-  lb(`<div class="sheet"><h1>Promemoria backup</h1><p class="mu">Sono passati più di 30 giorni dall'ultimo backup delle password. Ti consiglio di esportarne uno aggiornato.</p><button data-act="exp">Esporta ora</button><button data-act="close">Più tardi</button></div>`);
+  lb(`<div class="sheet"><h1>Promemoria backup</h1><p class="mu">Sono passati più di 30 giorni dall'ultimo backup delle password. Ti consiglio di esportarne uno aggiornato.</p><div class="grp"><button class="row" data-act="exp"><div><strong>Esporta ora</strong><span class="r2"><span>Crea subito un backup cifrato delle password</span></span></div>${ic('right')}</button><button class="row" data-act="close"><div><strong>Più tardi</strong><span class="r2"><span>Te lo ricorderò alla prossima apertura della Home</span></span></div>${ic('right')}</button></div></div>`);
 }
 
-let data=load(),draft=null,edit=false,dirty=false,S={v:PAGE?'list':'home'},q='',prev=null;
+let data={entries:[]},draft=null,edit=false,dirty=false,S={v:PAGE?'list':'home'},q='',prev=null;
 const src=()=>edit?draft:data;
 const ent=id=>src().entries.find(e=>e.id===id);
 const OWN={ter:'own',doc:'nome'};                  // categorie raggruppate per proprietario: campo che lo contiene
@@ -129,7 +158,7 @@ function expBlock(){
 function home(){
   const n=id=>src().entries.filter(e=>e.cat===id).length;
   return `<h1>Le mie password</h1><p class="mu sub">Version 2.3.6<span style="display:block;margin-top:8px">Ultima modifica: ${lastMod()?new Date(lastMod()).toLocaleDateString('it-IT'):'—'}</span><span style="display:block;margin-top:8px">Password salvate: ${src().entries.length}</span></p>${expBlock()}<div class="grid">${C.map(c=>`<a class="cat" href="${c.p}">${ic(c.i)}<span>${c.n}</span><small>${pl(n(c.id))}</small></a>`).join('')}</div>
-  <div class="bk">${bkGrp(`<button data-act="exp" style="${BS}">Esporta backup</button><button data-act="imp" style="${BS}">Importa backup</button>`,`Ultimo backup manuale: ${lastBackup()?new Date(lastBackup()).toLocaleDateString('it-IT'):'mai'}`,4)}${driveBox()}<small style="display:block;margin-top:32px">Spazio usato: ${kb()} KB su circa 5000 KB</small></div>`;
+    <div class="bk">${driveBox()}${bkGrp(`Ultimo backup manuale: ${lastBackup()?new Date(lastBackup()).toLocaleDateString('it-IT'):'mai'}`,`<button data-act="exp" style="${BF}">Esporta backup</button><button data-act="imp" style="${BF}">Importa backup</button>`,'',18,'flex')}<small style="display:block;margin-top:32px">Spazio usato: ${kb()} KB su circa 5000 KB</small></div>`;
 }
 const row=(e,showCat)=>{
   const a=e.cat==='doc'?(e.f.scad?'Scade il '+fmt('d',e.f.scad):e.f.email||e.f.user||''):(e.f.email||e.f.user||e.f.tipo||''),p=e.f.pw||'';
@@ -273,12 +302,12 @@ async function exportData(pw){
     lb(`<div class="sheet"><h1>Backup pronto</h1><p class="mu">Scegli come salvare il file cifrato.</p><div class="grp"><button class="row" data-act="shareGo"><div><strong>Salva / Condividi</strong><span class="r2"><span>Scegli dove metterlo (Drive, File, WhatsApp, ecc.)</span></span></div>${ic('right')}</button><button class="row" data-act="dlGo"><div><strong>Scarica in Download</strong><span class="r2"><span>Salva il file nella cartella Download del telefono</span></span></div>${ic('right')}</button><button class="row" data-act="close"><div><strong>Annulla</strong><span class="r2"><span>Chiudi senza salvare il file</span></span></div>${ic('right')}</button></div></div>`);
   }catch(e){toast('Esportazione non riuscita')}
 }
-function saveAll(){
+async function saveAll(){
   if(!edit||!dirty)return;
   const old=data;
   draft.entries=draft.entries.filter(e=>Object.entries(e.f).some(([k,v])=>k!==OWN[e.cat]&&v)||(e.photos||[]).length);   // scarta voci vuote
   data=draft;
-  if(!persist()){data=old;toast('Salvataggio non riuscito: spazio pieno. Riduci le foto o esporta un backup.');return}
+  if(!await persist()){data=old;toast('Salvataggio non riuscito: spazio pieno. Riduci le foto o esporta un backup.');return}
   endEdit();render();toast('Salvato');
   if(driveOn())driveSync(false);
 }
@@ -312,7 +341,7 @@ async function importData(ev){
     const n=d.entries.filter(e=>e&&e.id&&e.f&&cat(e.cat)&&!ids.has(e.id));   // unisce senza toccare i dati esistenti
     const old=data;
     data={entries:data.entries.concat(n)};
-    if(!persist()){data=old;throw 1}
+    if(!await persist()){data=old;throw 1}
     render();toast(n.length+' voci importate');
   }catch(x){toast('Backup non valido o spazio insufficiente')}
 }
@@ -356,6 +385,7 @@ function onClick(ev){
       setLastBackup();pendingFile=null;closeLb();break}
     case 'drvSync':driveSync(true);break;
     case 'drvLink':driveLink().then(ok=>{if(ok&&data.entries.length)driveSync(true)});break;
+    case 'drvOff':driveUnlink();break;
     case 'offLink':closeLb();driveLink();break;
     case 'drvRes':if(edit)toast('Salva o annulla le modifiche prima di ripristinare');else pwSheet('drv');break;
     case 'drvGo':{const p=$('#pw1').value;if(!p){toast('Inserisci la password');break}closeLb();driveRestore(p);break}
@@ -377,7 +407,7 @@ function onInput(ev){
 }
 
 /* ---------- blocco app con password ---------- */
-const LKEY=KEY+'_lock',LOCK_MS=3*60*1000;   // si blocca dopo 3 minuti di inattività
+const LKEY=KEY+'_lock',LOCK_MS=60*1*1000;   // si blocca dopo 3 minuti di inattività
 const lockData=()=>{try{return JSON.parse(localStorage.getItem(LKEY))}catch(e){return null}};
 const accessPw=()=>sessionStorage.getItem('pwm_s')||'';
 const touch=()=>{try{sessionStorage.setItem('pwm_t',Date.now())}catch(e){}};
@@ -406,7 +436,7 @@ function showLock(){
   };
   const show=v=>{o.innerHTML=V[v]();const i=$('#lk1');if(i)setTimeout(()=>i.focus(),0)};
   const err=m=>{const e=$('#lkErr');if(e)e.textContent=m};
-  const unlock=()=>{touch();o.remove();setInert(false)};
+  const unlock=()=>{touch();o.remove();setInert(false);boot()};
   const saveLock=async p=>{
     const salt=crypto.getRandomValues(new Uint8Array(16));
     localStorage.setItem(LKEY,JSON.stringify({s:b64(salt),h:await hashPw(p,salt)}));
@@ -424,9 +454,11 @@ function showLock(){
     if(a==='restGo'){
       const p=$('#lk1').value;if(!p)return err('Inserisci la password');
       b.disabled=true;
-      const ok=await driveRestore(p,err);   // chiamata subito, senza attese prima
+      try{sessionStorage.setItem('pwm_s',p)}catch(e){}   // serve a cifrare i dati ripristinati
+      const lp=plainData();if(lp)data=lp;                // non perdere eventuali dati vecchi in chiaro
+      const ok=await driveRestore(p,err);
       b.disabled=false;
-      if(!ok){$('#lk1').value='';return}
+      if(!ok){try{sessionStorage.removeItem('pwm_s')}catch(e){}return}
       try{await saveLock(p)}catch(e){return err('Salvataggio non riuscito')}
       unlock();return;
     }
@@ -469,11 +501,17 @@ async function driveWho(tok){
 let dTok='',dExp=0;
 const driveOn=()=>localStorage.getItem(DK)==='1';
 const BS='margin:0;width:100%;padding:10px 8px;font-size:14px';
-const bkGrp=(btns,info,mt=18)=>`<div style="margin-top:${mt}px"><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">${btns}</div><small style="display:block;margin-top:6px;line-height:1.6">${info}</small></div>`;
+const bkGrp=(top,btns,bottom='',mt=18,cols=2)=>{   // top: testo sopra i pulsanti, bottom: testo sotto
+  const g=cols==='flex'?'display:flex;gap:8px':`display:grid;grid-template-columns:repeat(${cols},1fr);gap:8px`;
+  return `<div style="margin-top:${mt}px"><small style="display:block;margin-bottom:6px;line-height:1.6">${top}</small><div style="${g}">${btns}</div>${bottom?`<small style="display:block;margin-top:10px;line-height:1.6">${bottom}</small>`:''}</div>`;
+};
+const BF='margin:0;padding:10px 14px;font-size:14px';   // pulsanti larghi quanto il testo
+const BS3='margin:0;width:100%;padding:10px 4px;font-size:12px';
 const driveBox=()=>driveOn()
-  ?bkGrp(`<button data-act="drvSync" style="${BS}">Sincronizza ora</button><button data-act="drvRes" style="${BS}">Ripristina da Drive</button>`,
-    `Ultimo salvataggio su Drive: ${localStorage.getItem(DPK)==='1'?'modifiche da sincronizzare':(+localStorage.getItem(DLK)?new Date(+localStorage.getItem(DLK)).toLocaleString('it-IT'):'mai')}<span style="display:block;margin-top:10px">Account Drive: ${esc(localStorage.getItem(DEK)||'—')}<br>File: dbpsw-backup.json (cartella nascosta dell'app)</span>`)
-  :bkGrp(`<button data-act="drvLink" style="${BS}">Collega Drive</button><button data-act="drvRes" style="${BS}">Ripristina da Drive</button>`,'Google Drive non collegato');
+  ?bkGrp(`Ultimo salvataggio su Drive: ${localStorage.getItem(DPK)==='1'?'modifiche da sincronizzare':(+localStorage.getItem(DLK)?new Date(+localStorage.getItem(DLK)).toLocaleString('it-IT'):'mai')}`,
+    `<button data-act="drvSync" style="${BS3}">Sincronizza</button><button data-act="drvRes" style="${BS3}">Ripristina</button><button data-act="drvOff" style="${BS3}">Scollega</button>`,
+    `Account Drive: ${esc(localStorage.getItem(DEK)||'—')}<br>File: dbpsw-backup.json (cartella nascosta dell'app)`,4,3)
+  :bkGrp('Cloud non collegato',`<button data-act="drvLink" style="${BS}">Collega cloud</button><button data-act="drvRes" style="${BS}">Ripristina da cloud</button>`,'',4);
 
 function loadGsi(){
   return new Promise((ok,ko)=>{
@@ -569,6 +607,16 @@ async function driveLink(){
   if(S.v==='home')render();
   return true;
 }
+function driveUnlink(){
+  if(!confirm('Scollegare Google Drive? L\'app smette di aggiornare il backup. Il file già presente su Drive non viene cancellato.'))return;
+  const t=dTok||sessionStorage.getItem('pwm_dt')||'';
+  if(t&&window.google&&google.accounts&&google.accounts.oauth2){try{google.accounts.oauth2.revoke(t,()=>{})}catch(e){}}   // revoca il permesso concesso a Google
+  dTok='';dExp=0;
+  try{sessionStorage.removeItem('pwm_dt');sessionStorage.removeItem('pwm_de')}catch(e){}
+  [DK,DLK,DPK,DEK].forEach(k=>{try{localStorage.removeItem(k)}catch(e){}});
+  toast('Drive scollegato');
+  render();
+}
 async function driveRestore(pw,err){
   const fail=m=>{(err||toast)(m);return false};
   let tok,text;
@@ -589,7 +637,7 @@ async function driveRestore(pw,err){
     const n=d.entries.filter(e=>e&&e.id&&e.f&&cat(e.cat)&&!ids.has(e.id));
     const old=data;
     data={entries:data.entries.concat(n)};
-    if(!persist()){data=old;throw 1}
+    if(!await persist()){data=old;throw 1}
     try{localStorage.setItem(DK,'1')}catch(x){}
     try{const w=await driveWho(tok);if(w)localStorage.setItem(DEK,w)}catch(x){}
     render();toast(n.length+' voci ripristinate');
@@ -616,14 +664,25 @@ bind('#fImp','change',importData);
 $('#bar').innerHTML=C.map(c=>`<a href="${c.p}"${c.id===PAGE?' class="on"':''}>${ic(c.i)}${c.s}</a>`).join('');
 [['#bHome','home'],['#bAdd','plus'],['#bEdit','edit'],['#bSave','save']].forEach(([s,n])=>{$(s).innerHTML=ic(n)});
 $('#bEdit').disabled=!PAGE;   // in Home non c'è nulla da modificare
-render();
-if(driveOn()||!PAGE)loadGsi().catch(()=>{});
-if(navigator.storage&&navigator.storage.persist)navigator.storage.persist();
-if(!PAGE&&backupDue())backupReminder();
+if(!expired())boot();   // se l'app è già sbloccata in questa sessione; altrimenti parte da unlock()
 
-// apertura da altra pagina: #new = nuova voce, #id = apre quella voce
-const h=location.hash.slice(1);
-if(PAGE&&h){
-  if(h==='new')addTo();else if(ent(h))go({v:'detail',id:h});
-  try{history.replaceState(null,'',location.pathname+location.search)}catch(e){}
+function boot(){return bootP||(bootP=bootRun())}
+async function bootRun(){
+  try{data=await load()}
+  catch(e){
+    blocked=true;
+    $('#main').innerHTML='<h1>Dati non leggibili</h1><p class="mu">Non riesco a decifrare i dati salvati su questo dispositivo. Non li ho modificati. Chiudi l\'app e riprova; se il problema resta, ripristina da un backup.</p>';
+    return;
+  }
+  if(legacy){legacy=false;await persist(true)}   // migrazione: i dati in chiaro diventano cifrati
+  render();
+  if(driveOn()||!PAGE)loadGsi().catch(()=>{});
+  if(navigator.storage&&navigator.storage.persist)navigator.storage.persist();
+  if(!PAGE&&data.entries.length&&backupDue())backupReminder();
+  // apertura da altra pagina: #new = nuova voce, #id = apre quella voce
+  const h=location.hash.slice(1);
+  if(PAGE&&h){
+    if(h==='new')addTo();else if(ent(h))go({v:'detail',id:h});
+    try{history.replaceState(null,'',location.pathname+location.search)}catch(e){}
+  }
 }
