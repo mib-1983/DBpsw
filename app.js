@@ -96,7 +96,7 @@ const LMK=KEY+'_lastmod';
 const lastMod=()=>+localStorage.getItem(LMK)||0;
 const lastBackup=()=>+localStorage.getItem(LBK)||0;
 const setLastBackup=()=>{try{localStorage.setItem(LBK,Date.now())}catch(e){}};
-const backupDue=()=>!driveOn()&&Date.now()-lastBackup()>30*86400000;
+const backupDue=()=>!cloudOn()&&Date.now()-lastBackup()>30*86400000;
 function backupReminder(){
   lb(`<div class="sheet"><h1>Promemoria backup</h1><p class="mu">Sono passati più di 30 giorni dall'ultimo backup delle password. Ti consiglio di esportarne uno aggiornato.</p><div class="grp"><button class="row" data-act="exp"><div><strong>Esporta ora</strong><span class="r2"><span>Crea subito un backup cifrato delle password</span></span></div>${ic('right')}</button><button class="row" data-act="close"><div><strong>Più tardi</strong><span class="r2"><span>Te lo ricorderò alla prossima apertura della Home</span></span></div>${ic('right')}</button></div></div>`);
 }
@@ -158,7 +158,7 @@ function expBlock(){
 function home(){
   const n=id=>src().entries.filter(e=>e.cat===id).length;
   return `<h1>Le mie password</h1><p class="mu sub">Version 2.3.6<span style="display:block;margin-top:8px">Ultima modifica: ${lastMod()?new Date(lastMod()).toLocaleDateString('it-IT'):'—'}</span><span style="display:block;margin-top:8px">Password salvate: ${src().entries.length}</span></p>${expBlock()}<div class="grid">${C.map(c=>`<a class="cat" href="${c.p}">${ic(c.i)}<span>${c.n}</span><small>${pl(n(c.id))}</small></a>`).join('')}</div>
-    <div class="bk">${driveBox()}${bkGrp(`Ultimo backup manuale: ${lastBackup()?new Date(lastBackup()).toLocaleDateString('it-IT'):'mai'}`,`<button data-act="exp" style="${BF}">Esporta backup</button><button data-act="imp" style="${BF}">Importa backup</button>`,'',18,'flex')}<small style="display:block;margin-top:32px">Spazio usato: ${kb()} KB su circa 5000 KB</small></div>`;
+    <div class="bk">${driveBox()}${bkGrp(`Ultimo backup manuale: ${lastBackup()?new Date(lastBackup()).toLocaleDateString('it-IT'):'mai'}`,`<button data-act="exp" style="${BF}">Esporta backup</button><button data-act="imp" style="${BF}">Importa backup</button>`,'',18,'flex')}<div style="margin-top:18px"><button data-cx="pwOpen" style="${BF}">Cambia password di accesso</button></div><small style="display:block;margin-top:32px">Spazio usato: ${kb()} KB su circa 5000 KB</small></div>`;
 }
 const row=(e,showCat)=>{
   const a=e.cat==='doc'?(e.f.scad?'Scade il '+fmt('d',e.f.scad):e.f.email||e.f.user||''):(e.f.email||e.f.user||e.f.tipo||''),p=e.f.pw||'';
@@ -254,10 +254,10 @@ function shrink(f){   // ridimensiona la foto (max 1000px, JPEG) per non riempir
   return new Promise((ok,ko)=>{
     const u=URL.createObjectURL(f),i=new Image();
     i.onload=()=>{
-      const r=Math.min(1,1000/Math.max(i.width,i.height)),c=document.createElement('canvas');
+      const r=Math.min(1,1400/Math.max(i.width,i.height)),c=document.createElement('canvas');
       c.width=Math.round(i.width*r);c.height=Math.round(i.height*r);
       c.getContext('2d').drawImage(i,0,0,c.width,c.height);
-      URL.revokeObjectURL(u);ok(c.toDataURL('image/jpeg',.6));
+      URL.revokeObjectURL(u);ok(c.toDataURL('image/jpeg',.7));
     };
     i.onerror=ko;i.src=u;
   });
@@ -283,13 +283,14 @@ async function decryptJSON(text,pw){
   return JSON.parse(td.decode(pt));
 }
 let impPw=null;   // password inserita prima di scegliere il file da importare
-function pwSheet(mode){   // mode: 'exp' (imposta password) | 'imp' (chiedi password)
+function pwSheet(mode){   // mode: 'exp' (imposta password) | 'imp' (chiedi password) | 'drv' (ripristino da Drive)
   const exp=mode==='exp';
+  const sub={exp:'Crea il file di backup cifrato',imp:'Poi scegli il file da importare',drv:'Scarica e ripristina da Google Drive'}[mode]||'';
   lb(`<div class="sheet"><h1>${exp?'Imposta una password per il backup':'Password del backup'}</h1><div class="grp">
     <div class="f"><div class="fv"><label>Password</label><input id="pw1" type="password" autocomplete="${exp?'new-password':'current-password'}"></div></div>
     ${exp?'<div class="f"><div class="fv"><label>Conferma password</label><input id="pw2" type="password" autocomplete="new-password"></div></div>':''}
     </div><p class="mu">${exp?'Ti servirà per aprire questo backup su un altro telefono. Se la perdi, il backup non è più recuperabile.':'Inserisci la password che hai impostato quando hai creato questo backup.'}</p>
-    <button data-act="${mode}Go">${exp?'Esporta':'Continua'}</button><button data-act="close">Annulla</button></div>`);
+    <div class="grp"><button class="row" data-act="${mode}Go"><div><strong>${exp?'Esporta':'Continua'}</strong><span class="r2"><span>${sub}</span></span></div>${ic('right')}</button><button class="row" data-act="close"><div><strong>Annulla</strong><span class="r2"><span>Chiudi senza fare nulla</span></span></div>${ic('right')}</button></div></div>`);
   setTimeout(()=>{const i=$('#pw1');if(i)i.focus()},0);
 }
 let pendingFile=null;
@@ -309,7 +310,7 @@ async function saveAll(){
   data=draft;
   if(!await persist()){data=old;toast('Salvataggio non riuscito: spazio pieno. Riduci le foto o esporta un backup.');return}
   endEdit();render();toast('Salvato');
-  if(driveOn())driveSync(false);
+  cloudSync(false);
 }
 function toggleEdit(){
   if(!edit){startEdit();render();return}
@@ -389,7 +390,7 @@ function onClick(ev){
     case 'offLink':closeLb();driveLink();break;
     case 'drvRes':if(edit)toast('Salva o annulla le modifiche prima di ripristinare');else pwSheet('drv');break;
     case 'drvGo':{const p=$('#pw1').value;if(!p){toast('Inserisci la password');break}closeLb();driveRestore(p);break}
-    case 'expGo':{const p1=$('#pw1').value,p2=$('#pw2').value;if(p1.length<4){toast('Password troppo corta (minimo 4 caratteri)');break}if(p1!==p2){toast('Le password non coincidono');break}closeLb();exportData(p1);break}
+    case 'expGo':{const p1=$('#pw1').value,p2=$('#pw2').value;if(p1.length<6){toast('Password troppo corta (minimo 6 caratteri)');break}{toast('Password troppo corta (minimo 4 caratteri)');break}if(p1!==p2){toast('Le password non coincidono');break}closeLb();exportData(p1);break}
     case 'impGo':{const p=$('#pw1').value;if(!p){toast('Inserisci la password');break}impPw=p;closeLb();$('#fImp').click();break}
   }
 }
@@ -429,8 +430,8 @@ function showLock(){
   const hd=(t,p)=>`<h1 style="font-size:20px;margin:0 0 6px;color:#111">${t}</h1><p style="margin:0 0 16px;color:#667;font-size:14px">${p}</p>`;
   const er='<p id="lkErr" style="margin:0 0 10px;color:#b3261e;font-size:14px;min-height:18px"></p>';
   const V={
-    welcome:()=>card(hd('Benvenuto','Hai già un backup su Google Drive o vuoi iniziare da zero?')+`<button data-lk="rest" style="${pri}">Ripristina da Google Drive</button><button data-lk="new" style="${alt}">Inizia da zero</button>`),
-    rest:()=>card(hd('Ripristina da Drive','Inserisci la password del backup. Diventerà anche la password di accesso all\'app.')+`<input id="lk1" type="password" placeholder="Password del backup" autocomplete="current-password" style="${st}">${er}<button id="lkGo" data-lk="restGo" style="${pri}">Ripristina</button><button data-lk="back" style="${alt}">Indietro</button>`),
+    welcome:()=>card(hd('Benvenuto','Hai già un backup nel cloud o vuoi iniziare da zero?')+`<button data-lk="rest" style="${pri}">Ripristina da cloud</button><button data-lk="new" style="${alt}">Inizia da zero</button>`),
+    rest:()=>card(hd('Ripristina da cloud','Inserisci la password del backup, poi scegli dove si trova. Diventerà anche la password di accesso all\'app.')+`<input id="lk1" type="password" placeholder="Password del backup" autocomplete="current-password" style="${st}">${er}<button data-lk="restGo" style="${pri}">Da Google Drive</button><button data-lk="restGoX" style="${pri}">Da Dropbox</button><button data-lk="back" style="${alt}">Indietro</button>`),
     make:()=>card(hd('Crea la password di accesso','Sarà anche la password dei backup. Se la perdi non c\'è recupero.')+`<input id="lk1" type="password" placeholder="Password" autocomplete="new-password" style="${st}"><input id="lk2" type="password" placeholder="Conferma password" autocomplete="new-password" style="${st}">${er}<button id="lkGo" data-lk="mk" style="${pri}">Salva e continua</button><button data-lk="back" style="${alt}">Indietro</button>`),
     ask:()=>card(hd('App bloccata','Inserisci la password per continuare.')+`<input id="lk1" type="password" placeholder="Password" autocomplete="current-password" style="${st}">${er}<button id="lkGo" data-lk="ask" style="${pri}">Sblocca</button>`)
   };
@@ -438,12 +439,27 @@ function showLock(){
   const err=m=>{const e=$('#lkErr');if(e)e.textContent=m};
   const unlock=()=>{touch();o.remove();setInert(false);boot()};
   const saveLock=async p=>{
-    const salt=crypto.getRandomValues(new Uint8Array(16));
-    localStorage.setItem(LKEY,JSON.stringify({s:b64(salt),h:await hashPw(p,salt)}));
-    try{sessionStorage.setItem('pwm_s',p)}catch(e){}
+  const salt=crypto.getRandomValues(new Uint8Array(16));
+  localStorage.setItem(LKEY,JSON.stringify({s:b64(salt),h:await hashPw(p,salt)}));
+  try{sessionStorage.setItem('pwm_s',p)}catch(e){}
   };
   document.body.appendChild(o);setInert(true);
   if(first){show('welcome');loadGsi().catch(()=>{})}else show('ask');
+
+  // ritorno da Dropbox durante il ripristino al primo avvio
+  if(first&&sessionStorage.getItem('pwm_xr')==='f'&&/[?&](code|error)=/.test(location.search)){
+    o.innerHTML=card(hd('Ripristino da Dropbox','Sto scaricando il backup…'));
+    setTimeout(async()=>{   // rimandato: le costanti di Dropbox sono dichiarate più sotto nel file
+      const p=accessPw();
+      try{sessionStorage.removeItem('pwm_xr')}catch(e){}
+      let ok=false,msg='';
+      try{ok=await dbxReturn()}catch(e){msg=e.message}
+      if(ok){const lp=plainData();if(lp)data=lp;ok=await dbxRestore(p,m=>{msg=m})}
+      if(!ok){try{sessionStorage.removeItem('pwm_s')}catch(e){}show('rest');err(msg||'Ripristino non riuscito');return}
+      try{await saveLock(p)}catch(e){show('rest');return err('Salvataggio non riuscito')}
+      unlock();
+    },0);
+  }
 
   o.addEventListener('click',async ev=>{
     const b=ev.target.closest('[data-lk]');if(!b)return;
@@ -462,13 +478,18 @@ function showLock(){
       try{await saveLock(p)}catch(e){return err('Salvataggio non riuscito')}
       unlock();return;
     }
+    if(a==='restGoX'){
+      const p=$('#lk1').value;if(!p)return err('Inserisci la password');
+      try{sessionStorage.setItem('pwm_s',p);sessionStorage.setItem('pwm_xr','f')}catch(e){}
+      dbxStart();return;
+    }
     if(a==='mk'){
       const p=$('#lk1').value;
-      if(p.length<4)return err('Minimo 4 caratteri');
+      if(p.length<6)return err('Minimo 6 caratteri');
       if(p!==$('#lk2').value)return err('Le password non coincidono');
       try{await saveLock(p)}catch(e){return err('Salvataggio non riuscito')}
       unlock();
-      if(!driveOn())setTimeout(driveOffer,300);
+      if(!cloudOn())setTimeout(driveOffer,300);
       return;
     }
     if(a==='ask'){
@@ -511,7 +532,11 @@ const driveBox=()=>driveOn()
   ?bkGrp(`Ultimo salvataggio su Drive: ${localStorage.getItem(DPK)==='1'?'modifiche da sincronizzare':(+localStorage.getItem(DLK)?new Date(+localStorage.getItem(DLK)).toLocaleString('it-IT'):'mai')}`,
     `<button data-act="drvSync" style="${BS3}">Sincronizza</button><button data-act="drvRes" style="${BS3}">Ripristina</button><button data-act="drvOff" style="${BS3}">Scollega</button>`,
     `Account Drive: ${esc(localStorage.getItem(DEK)||'—')}<br>File: dbpsw-backup.json (cartella nascosta dell'app)`,4,3)
-  :bkGrp('Cloud non collegato',`<button data-act="drvLink" style="${BS}">Collega cloud</button><button data-act="drvRes" style="${BS}">Ripristina da cloud</button>`,'',4);
+  :dbxOn()
+  ?bkGrp(`Ultimo salvataggio su Dropbox: ${localStorage.getItem(XPN)==='1'?'modifiche da sincronizzare':(+localStorage.getItem(XLK)?new Date(+localStorage.getItem(XLK)).toLocaleString('it-IT'):'mai')}`,
+    `<button data-cx="xSync" style="${BS3}">Sincronizza</button><button data-cx="resX" style="${BS3}">Ripristina</button><button data-cx="xOff" style="${BS3}">Scollega</button>`,
+    `Account Dropbox: ${esc(localStorage.getItem(XEM)||'—')}<br>File: ${DBX_FILE} (cartella dell'app su Dropbox)`,4,3)
+  :bkGrp('Cloud non collegato',`<button data-cx="cLink" style="${BS}">Collega cloud</button><button data-cx="cRes" style="${BS}">Ripristina da cloud</button>`,'',4);
 
 function loadGsi(){
   return new Promise((ok,ko)=>{
@@ -646,8 +671,219 @@ async function driveRestore(pw,err){
 }
 function driveOffer(){
   loadGsi().catch(()=>{});
-  lb(`<div class="sheet"><h1>Collegare Google Drive?</h1><p class="mu">Ogni volta che salvi, l'app aggiorna da sola un backup cifrato nel tuo Google Drive.</p><div class="grp"><button class="row" data-act="offLink"><div><strong>Collega Google Drive</strong><span class="r2"><span>Attiva il backup automatico</span></span></div>${ic('right')}</button><button class="row" data-act="close"><div><strong>Non ora</strong><span class="r2"><span>Potrai collegarlo più tardi dalla Home</span></span></div>${ic('right')}</button></div></div>`);
+  lb(`<div class="sheet"><h1>Collegare un cloud?</h1><p class="mu">Ogni volta che salvi, l'app aggiorna da sola un backup cifrato nel cloud che scegli.</p><div class="grp"><button class="row" data-cx="lnkG"><div><strong>Google Drive</strong><span class="r2"><span>Attiva il backup automatico</span></span></div>${ic('right')}</button><button class="row" data-cx="lnkX"><div><strong>Dropbox</strong><span class="r2"><span>Attiva il backup automatico</span></span></div>${ic('right')}</button><button class="row" data-act="close"><div><strong>Non ora</strong><span class="r2"><span>Potrai collegarlo più tardi dalla Home</span></span></div>${ic('right')}</button></div></div>`);
 }
+
+/* ---------- Dropbox (cartella dell'app, accesso OAuth con PKCE) ---------- */
+const DBX_KEY='8b6xug3q83b18kw',DBX_FILE='dbpsw-backup.json';
+const XON=KEY+'_dbxon',XLK=KEY+'_dbxlast',XPN=KEY+'_dbxpending',XEM=KEY+'_dbxemail',XK=KEY+'_dbx',XPK=KEY+'_dbxpk';
+const dbxOn=()=>localStorage.getItem(XON)==='1';
+const cloudOn=()=>driveOn()||dbxOn();
+function cloudSync(manual){if(dbxOn())return dbxSync(manual);if(driveOn())return driveSync(manual)}
+const b64u=b=>b64(b).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+const dbxRedirect=()=>location.origin+location.pathname;   // deve coincidere con un Redirect URI registrato su Dropbox
+let xKey=null,xTok='',xExp=0;
+
+async function xSet(rt){   // il refresh token viene salvato cifrato con la password di accesso
+  const salt=crypto.getRandomValues(new Uint8Array(16)),iv=crypto.getRandomValues(new Uint8Array(12));
+  xKey=await deriveKey(accessPw(),salt);
+  const ct=await crypto.subtle.encrypt({name:'AES-GCM',iv},xKey,te.encode(rt));
+  localStorage.setItem(XK,JSON.stringify({salt:b64(salt),iv:b64(iv),ct:b64(ct)}));
+}
+async function xGet(){
+  const o=JSON.parse(localStorage.getItem(XK)||'null');
+  if(!o)return '';
+  if(!xKey)xKey=await deriveKey(accessPw(),unb64(o.salt));
+  return td.decode(await crypto.subtle.decrypt({name:'AES-GCM',iv:unb64(o.iv)},xKey,unb64(o.ct)));
+}
+async function xToken(){
+  if(!xTok){try{xTok=sessionStorage.getItem('pwm_xt')||'';xExp=+sessionStorage.getItem('pwm_xe')||0}catch(e){}}
+  if(xTok&&Date.now()<xExp)return xTok;
+  const rt=await xGet();
+  if(!rt)throw new Error('Dropbox non collegato');
+  const r=await fetch('https://api.dropboxapi.com/oauth2/token',{method:'POST',body:new URLSearchParams({grant_type:'refresh_token',refresh_token:rt,client_id:DBX_KEY})});
+  if(!r.ok)throw new Error('accesso '+r.status);
+  const j=await r.json();
+  xTok=j.access_token;xExp=Date.now()+(j.expires_in-120)*1000;
+  try{sessionStorage.setItem('pwm_xt',xTok);sessionStorage.setItem('pwm_xe',xExp)}catch(e){}
+  return xTok;
+}
+function dbxClear(){
+  [XON,XLK,XPN,XEM,XK,XPK].forEach(k=>localStorage.removeItem(k));
+  xKey=null;xTok='';xExp=0;
+  try{sessionStorage.removeItem('pwm_xt');sessionStorage.removeItem('pwm_xe')}catch(e){}
+}
+async function dbxStart(){   // porta alla pagina di autorizzazione di Dropbox
+  const v=b64u(crypto.getRandomValues(new Uint8Array(48))),s=b64u(crypto.getRandomValues(new Uint8Array(16)));
+  const ch=b64u(await crypto.subtle.digest('SHA-256',te.encode(v)));
+  localStorage.setItem(XPK,JSON.stringify({v,s}));
+  location.href='https://www.dropbox.com/oauth2/authorize?'+new URLSearchParams({client_id:DBX_KEY,response_type:'code',code_challenge:ch,code_challenge_method:'S256',redirect_uri:dbxRedirect(),token_access_type:'offline',state:s});
+}
+async function dbxReturn(){   // al ritorno da Dropbox (?code=...) conclude il collegamento; false se non è un ritorno
+  const p=new URLSearchParams(location.search),code=p.get('code'),st=p.get('state'),bad=p.get('error');
+  if(!code&&!bad)return false;
+  const k=JSON.parse(localStorage.getItem(XPK)||'null');
+  if(!k||k.s!==st)return false;
+  try{history.replaceState(null,'',location.pathname+location.hash)}catch(e){}
+  localStorage.removeItem(XPK);
+  if(bad||!code)throw new Error('collegamento annullato');
+  const r=await fetch('https://api.dropboxapi.com/oauth2/token',{method:'POST',body:new URLSearchParams({grant_type:'authorization_code',code,client_id:DBX_KEY,redirect_uri:dbxRedirect(),code_verifier:k.v})});
+  if(!r.ok)throw new Error('token '+r.status);
+  const j=await r.json();
+  if(!j.refresh_token)throw new Error('refresh token mancante');
+  await xSet(j.refresh_token);
+  xTok=j.access_token;xExp=Date.now()+(j.expires_in-120)*1000;
+  try{sessionStorage.setItem('pwm_xt',xTok);sessionStorage.setItem('pwm_xe',xExp)}catch(e){}
+  try{   // l'email si legge solo se in Dropbox è attivo anche il permesso account_info.read
+    const a=await fetch('https://api.dropboxapi.com/2/users/get_current_account',{method:'POST',headers:{Authorization:'Bearer '+j.access_token}});
+    if(a.ok){const aj=await a.json();if(aj.email)localStorage.setItem(XEM,aj.email.toLowerCase())}
+  }catch(e){}
+  localStorage.setItem(XON,'1');localStorage.removeItem(XPN);
+  [DK,DLK,DPK,DEK].forEach(x=>localStorage.removeItem(x));   // un solo cloud alla volta
+  toast('Dropbox collegato');
+  return true;
+}
+function dbxAfterReturn(){   // chiamata all'avvio dopo lo sblocco
+  dbxReturn().then(ok=>{
+    if(!ok)return;
+    if(sessionStorage.getItem('pwm_xr')==='h'){try{sessionStorage.removeItem('pwm_xr')}catch(e){}xPwSheet()}
+    else if(data.entries.length)dbxSync(true);
+    if(S.v==='home')render();
+  }).catch(e=>toast('Dropbox: '+e.message));
+}
+async function dbxSync(manual){
+  const pw=accessPw();
+  if(!pw)return;
+  try{
+    if(!data.entries.length){if(manual)toast('Nessun dato da salvare. Usa "Ripristina da cloud".');return}
+    const tok=await xToken();
+    const enc=await encryptJSON(data,pw);
+    const r=await fetch('https://content.dropboxapi.com/2/files/upload',{method:'POST',headers:{Authorization:'Bearer '+tok,'Content-Type':'application/octet-stream','Dropbox-API-Arg':JSON.stringify({path:'/'+DBX_FILE,mode:'overwrite',mute:true})},body:enc});
+    if(!r.ok)throw new Error('caricamento '+r.status);
+    try{localStorage.setItem(XLK,Date.now());localStorage.removeItem(XPN)}catch(x){}
+    toast('Salvato su Dropbox');
+  }catch(e){
+    try{localStorage.setItem(XPN,'1')}catch(x){}
+    toast('Dropbox: '+e.message);
+  }
+  if(S.v==='home')render();
+}
+async function dbxRestore(pw,err){
+  const fail=m=>{(err||toast)(m);return false};
+  let text;
+  try{
+    const tok=await xToken();
+    const r=await fetch('https://content.dropboxapi.com/2/files/download',{method:'POST',headers:{Authorization:'Bearer '+tok,'Dropbox-API-Arg':JSON.stringify({path:'/'+DBX_FILE})}});
+    if(r.status===409)return fail('Nessun backup trovato su Dropbox');
+    if(!r.ok)throw new Error('download '+r.status);
+    text=await r.text();
+  }catch(e){return fail('Dropbox: '+e.message)}
+  let d;
+  try{d=await decryptJSON(text,pw)}
+  catch(e){return fail('Password errata o backup non valido')}
+  try{
+    if(!Array.isArray(d.entries))throw 0;
+    const ids=new Set(data.entries.map(e=>e.id));
+    const n=d.entries.filter(e=>e&&e.id&&e.f&&cat(e.cat)&&!ids.has(e.id));
+    const old=data;
+    data={entries:data.entries.concat(n)};
+    if(!await persist()){data=old;throw 1}
+    render();toast(n.length+' voci ripristinate');
+    return true;
+  }catch(x){return fail('Backup non valido o spazio insufficiente')}
+}
+async function dbxUnlink(){
+  if(!confirm('Scollegare Dropbox? L\'app smette di aggiornare il backup. Il file già presente su Dropbox non viene cancellato.'))return;
+  try{const t=await xToken();await fetch('https://api.dropboxapi.com/2/auth/token/revoke',{method:'POST',headers:{Authorization:'Bearer '+t}})}catch(e){}   // revoca il permesso
+  dbxClear();toast('Dropbox scollegato');render();
+}
+function xPwSheet(){
+  lb(`<div class="sheet"><h1>Password del backup</h1><div class="grp"><div class="f"><div class="fv"><label>Password</label><input id="pw1" type="password" autocomplete="current-password"></div></div></div><p class="mu">Inserisci la password che hai impostato quando hai creato questo backup.</p><div class="grp"><button class="row" data-cx="xRestGo"><div><strong>Continua</strong><span class="r2"><span>Scarica e ripristina da Dropbox</span></span></div>${ic('right')}</button><button class="row" data-act="close"><div><strong>Annulla</strong><span class="r2"><span>Chiudi senza fare nulla</span></span></div>${ic('right')}</button></div></div>`);
+  setTimeout(()=>{const i=$('#pw1');if(i)i.focus()},0);
+}
+function cloudSheet(kind){
+  const L=kind==='link';
+  lb(`<div class="sheet"><h1>${L?'Collega un cloud':'Ripristina da cloud'}</h1><div class="grp"><button class="row" data-cx="${L?'lnkG':'resG'}"><div><strong>Google Drive</strong><span class="r2"><span>${L?'Backup automatico cifrato':'Scarica il backup da Google Drive'}</span></span></div>${ic('right')}</button><button class="row" data-cx="${L?'lnkX':'resX'}"><div><strong>Dropbox</strong><span class="r2"><span>${L?'Backup automatico cifrato':'Scarica il backup da Dropbox'}</span></span></div>${ic('right')}</button><button class="row" data-act="close"><div><strong>Annulla</strong></div>${ic('right')}</button></div></div>`);
+}
+function onCloud(ev){
+  const b=ev.target.closest('[data-cx]');if(!b)return;
+  switch(b.dataset.cx){
+    case 'cLink':cloudSheet('link');break;
+    case 'cRes':cloudSheet('res');break;
+    case 'lnkG':
+      closeLb();
+      if(dbxOn()&&!confirm('Dropbox è collegato. Passare a Google Drive? Dropbox verrà scollegato (il file su Dropbox resta).'))break;
+      driveLink().then(ok=>{if(ok){dbxClear();if(data.entries.length)driveSync(true)}});
+      break;
+    case 'lnkX':
+      closeLb();
+      if(driveOn()&&!confirm('Google Drive è collegato. Passare a Dropbox? Drive verrà scollegato (il file su Drive resta).'))break;
+      dbxStart();
+      break;
+    case 'resG':closeLb();pwSheet('drv');break;
+    case 'resX':
+      closeLb();
+      if(dbxOn())xPwSheet();
+      else{try{sessionStorage.setItem('pwm_xr','h')}catch(e){}dbxStart()}
+      break;
+    case 'xSync':dbxSync(true);break;
+    case 'xOff':dbxUnlink();break;
+    case 'xRestGo':{const p=$('#pw1').value;if(!p){toast('Inserisci la password');break}closeLb();dbxRestore(p);break}
+  }
+}
+document.addEventListener('click',onCloud);
+
+/* ---------- cambio password di accesso ---------- */
+function pwChangeSheet(){
+  lb(`<div class="sheet"><h1>Cambia password di accesso</h1><div class="grp">
+    <div class="f"><div class="fv"><label>Password attuale</label><input id="cp0" type="password" autocomplete="current-password"></div></div>
+    <div class="f"><div class="fv"><label>Nuova password (minimo 6 caratteri)</label><input id="cp1" type="password" autocomplete="new-password"></div></div>
+    <div class="f"><div class="fv"><label>Conferma nuova password</label><input id="cp2" type="password" autocomplete="new-password"></div></div>
+    </div><p class="mu">Sarà anche la nuova password dei backup. Il backup nel cloud viene aggiornato. <strong>I file di backup esportati in precedenza restano protetti dalla vecchia password.</strong></p>
+    <div class="grp"><button class="row" data-cx="pwGo"><div><strong>Cambia password</strong><span class="r2"><span>Ricifra i dati e aggiorna il backup nel cloud</span></span></div>${ic('right')}</button><button class="row" data-cx="pwGoE"><div><strong>Cambia psw ed esporta backup</strong><span class="r2"><span>Crea nuovo backup con nuova password</span></span></div>${ic('right')}</button><button class="row" data-act="close"><div><strong>Annulla</strong><span class="r2"><span>Chiudi senza fare nulla</span></span></div>${ic('right')}</button></div></div>`);
+  setTimeout(()=>{const i=$('#cp0');if(i)i.focus()},0);
+}
+async function changePw(exp){
+  const p0=$('#cp0').value,p1=$('#cp1').value,p2=$('#cp2').value,l=lockData();
+  if(!p0||!l||await hashPw(p0,unb64(l.s))!==l.h){toast('Password attuale errata');return}
+  if(p1.length<6){toast('Minimo 6 caratteri');return}
+  if(p1!==p2){toast('Le password non coincidono');return}
+  if(p1===p0){toast('La nuova password è uguale a quella attuale');return}
+  if(blocked||edit||dirty){toast('Salva o annulla le modifiche prima di cambiare password');return}
+  closeLb();toast('Cambio password…');
+  const oldPw=accessPw(),oldLock=localStorage.getItem(LKEY),oKey=dKey,oSalt=dSalt;
+  let rt='';
+  try{if(dbxOn())rt=await xGet()}catch(e){}   // il token di Dropbox va ricifrato con la nuova password
+  try{
+    const salt=crypto.getRandomValues(new Uint8Array(16));
+    localStorage.setItem(LKEY,JSON.stringify({s:b64(salt),h:await hashPw(p1,salt)}));
+    sessionStorage.setItem('pwm_s',p1);
+    dKey=null;dSalt=null;   // nuova chiave per i dati a riposo
+    if(!await persist(true))throw new Error('salvataggio');
+  }catch(e){
+    try{localStorage.setItem(LKEY,oldLock)}catch(x){}   // torno com'ero: nulla è cambiato
+    try{sessionStorage.setItem('pwm_s',oldPw)}catch(x){}
+    dKey=oKey;dSalt=oSalt;
+    toast('Cambio password non riuscito: nulla è stato modificato');
+    return;
+  }
+  if(dbxOn()){
+    try{if(!rt)throw 0;await xSet(rt)}
+    catch(e){dbxClear();toast('Dropbox scollegato: ricollegalo dalla Home')}
+  }
+  touch();render();toast('Password cambiata');
+  if(cloudOn())setTimeout(()=>cloudSync(true),1500);   // aggiorna il backup nel cloud con la nuova password
+  if(exp)exportData(accessPw());   // apre la finestra di salvataggio con la nuova password
+}
+function onPw(ev){
+  const b=ev.target.closest('[data-cx]');if(!b)return;
+  if(b.dataset.cx==='pwOpen'){
+    if(edit||dirty){toast('Salva o annulla le modifiche prima di cambiare password');return}
+    pwChangeSheet();
+  }else if(b.dataset.cx==='pwGo')changePw(false);
+  else if(b.dataset.cx==='pwGoE')changePw(true);
+}
+document.addEventListener('click',onPw);
 
 /* ---------- avvio ---------- */
 document.addEventListener('click',onClick);
@@ -679,6 +915,7 @@ async function bootRun(){
   if(driveOn()||!PAGE)loadGsi().catch(()=>{});
   if(navigator.storage&&navigator.storage.persist)navigator.storage.persist();
   if(!PAGE&&data.entries.length&&backupDue())backupReminder();
+    dbxAfterReturn();
   // apertura da altra pagina: #new = nuova voce, #id = apre quella voce
   const h=location.hash.slice(1);
   if(PAGE&&h){
