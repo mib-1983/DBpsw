@@ -157,7 +157,7 @@ function expBlock(){
 /* ---------- viste ---------- */
 function home(){
   const n=id=>src().entries.filter(e=>e.cat===id).length;
-  return `<h1>Le mie password</h1><p class="mu sub">Version 2.3.6<span style="display:block;margin-top:8px">Ultima modifica: ${lastMod()?new Date(lastMod()).toLocaleDateString('it-IT'):'—'}</span><span style="display:block;margin-top:8px">Password salvate: ${src().entries.length}</span></p>${expBlock()}<div class="grid">${C.map(c=>`<a class="cat" href="${c.p}">${ic(c.i)}<span>${c.n}</span><small>${pl(n(c.id))}</small></a>`).join('')}</div>
+  return `<h1>Le mie password</h1><p class="mu sub">Version 2.3.8<span style="display:block;margin-top:8px">Ultima modifica: ${lastMod()?new Date(lastMod()).toLocaleDateString('it-IT'):'—'}</span><span style="display:block;margin-top:8px">Password salvate: ${src().entries.length}</span></p>${expBlock()}<div class="grid">${C.map(c=>`<a class="cat" href="${c.p}">${ic(c.i)}<span>${c.n}</span><small>${pl(n(c.id))}</small></a>`).join('')}</div>
     <div class="bk">${driveBox()}${bkGrp(`Ultimo backup manuale: ${lastBackup()?new Date(lastBackup()).toLocaleDateString('it-IT'):'mai'}`,`<button data-act="exp" style="${BF}">Esporta backup</button><button data-act="imp" style="${BF}">Importa backup</button>`,'',18,'flex')}<div style="margin-top:18px"><button data-cx="pwOpen" style="${BF}">Cambia password di accesso</button></div><small style="display:block;margin-top:32px">Spazio usato: ${kb()} KB su circa 5000 KB</small></div>`;
 }
 const row=(e,showCat)=>{
