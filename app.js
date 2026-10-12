@@ -1,6 +1,11 @@
 /* app.js — tutte le funzioni dell'app.
    Ogni pagina categoria dichiara <body data-cat="..."> (gli id sono in C qui sotto); la Home non ha data-cat. */
 const KEY='pwm_v1';
+const THEME_KEY=KEY+'_theme';   // 'dark' o 'light'; se manca, vale il tema del telefono
+const themeNow=()=>{const t=localStorage.getItem(THEME_KEY);return t==='dark'||t==='light'?t:(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light')};
+const applyTheme=()=>{document.documentElement.dataset.theme=themeNow()};
+applyTheme();
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>{if(!localStorage.getItem(THEME_KEY))applyTheme()});
 const MSG='Ci sono modifiche non salvate. Scartarle?';
 const B=[['nome','Sito/App','u'],['email','E-mail','e'],['pw','Password','s'],['user','Nome Utente'],['altro','Altro','a']];
 // tipi di campo: e=email, s=segreto, n=segreto numerico, d=data, m=mese, a=testo lungo, p=foto
@@ -157,8 +162,8 @@ function expBlock(){
 /* ---------- viste ---------- */
 function home(){
   const n=id=>src().entries.filter(e=>e.cat===id).length;
-  return `<h1>Le mie password</h1><p class="mu sub">Version 2.3.8<span style="display:block;margin-top:8px">Ultima modifica: ${lastMod()?new Date(lastMod()).toLocaleDateString('it-IT'):'—'}</span><span style="display:block;margin-top:8px">Password salvate: ${src().entries.length}</span></p>${expBlock()}<div class="grid">${C.map(c=>`<a class="cat" href="${c.p}">${ic(c.i)}<span>${c.n}</span><small>${pl(n(c.id))}</small></a>`).join('')}</div>
-    <div class="bk">${driveBox()}${bkGrp(`Ultimo backup manuale: ${lastBackup()?new Date(lastBackup()).toLocaleDateString('it-IT'):'mai'}`,`<button data-act="exp" style="${BF}">Esporta backup</button><button data-act="imp" style="${BF}">Importa backup</button>`,'',18,'flex')}<div style="margin-top:18px"><button data-cx="pwOpen" style="${BF}">Cambia password di accesso</button></div><small style="display:block;margin-top:32px">Spazio usato: ${kb()} KB su circa 5000 KB</small></div>`;
+  return `<h1>Le mie password</h1><p class="mu sub"><span style="display:block">Ultima modifica: ${lastMod()?new Date(lastMod()).toLocaleString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'}):'—'}</span><span style="display:block;margin-top:8px">Password salvate: ${src().entries.length}</span></p>${expBlock()}<div class="grid">${C.map(c=>`<a class="cat" href="${c.p}">${ic(c.i)}<span>${c.n}</span><small>${pl(n(c.id))}</small></a>`).join('')}</div>
+    <div class="bk">${driveBox()}${bkGrp(`Ultimo backup manuale: ${lastBackup()?new Date(lastBackup()).toLocaleDateString('it-IT'):'mai'}`,`<button data-act="exp" style="${BF}">Esporta backup</button><button data-act="imp" style="${BF}">Importa backup</button>`,'',18,'flex')}<div style="margin-top:18px"><button data-cx="pwOpen" style="${BF}">Cambia password di accesso</button></div><small style="display:block;margin-top:32px">Spazio usato: ${kb()} KB su circa 5000 KB</small><label class="thm"><input type="checkbox" data-theme-toggle ${themeNow()==='dark'?'checked':''}>Tema scuro</label><small style="display:block;margin-top:8px">Version 2.3.8</small></div>`;
 }
 const row=(e,showCat)=>{
   const a=e.cat==='doc'?(e.f.scad?'Scade il '+fmt('d',e.f.scad):e.f.email||e.f.user||''):(e.f.email||e.f.user||e.f.tipo||''),p=e.f.pw||'';
@@ -408,7 +413,7 @@ function onInput(ev){
 }
 
 /* ---------- blocco app con password ---------- */
-const LKEY=KEY+'_lock',LOCK_MS=60*1*1000;   // si blocca dopo 1 minuto di inattività
+const LKEY=KEY+'_lock',LOCK_MS=60*3*1000;   // si blocca dopo 3 minuto di inattività
 const lockData=()=>{try{return JSON.parse(localStorage.getItem(LKEY))}catch(e){return null}};
 const accessPw=()=>sessionStorage.getItem('pwm_s')||'';
 const touch=()=>{try{sessionStorage.setItem('pwm_t',Date.now())}catch(e){}};
@@ -422,13 +427,13 @@ function showLock(){
   if($('#lockScreen'))return;
   const first=!lockData();
   const o=document.createElement('div');o.id='lockScreen';
-  o.style.cssText='position:fixed;inset:0;z-index:99999;background:#eef0f3;display:flex;align-items:center;justify-content:center;padding:24px';
-  const st='width:100%;box-sizing:border-box;padding:12px;margin:0 0 10px;border:1px solid #c8ccd2;border-radius:8px;font-size:16px';
+  o.style.cssText='position:fixed;inset:0;z-index:99999;background:var(--bg);display:flex;align-items:center;justify-content:center;padding:24px';
+  const st='width:100%;box-sizing:border-box;padding:12px;margin:0 0 10px;border:1px solid var(--line);border-radius:8px;font-size:16px;background:var(--card);color:var(--tx)';
   const bt='width:100%;padding:12px;border:0;border-radius:8px;font-size:16px;margin:0 0 10px;';
-  const pri=bt+'background:#1f3a5f;color:#fff',alt=bt+'background:#e4e7ec;color:#1f3a5f';
-  const card=h=>`<div style="width:100%;max-width:340px;background:#fff;border-radius:12px;padding:24px;box-shadow:0 2px 12px rgba(0,0,0,.12)">${h}</div>`;
-  const hd=(t,p)=>`<h1 style="font-size:20px;margin:0 0 6px;color:#111">${t}</h1><p style="margin:0 0 16px;color:#667;font-size:14px">${p}</p>`;
-  const er='<p id="lkErr" style="margin:0 0 10px;color:#b3261e;font-size:14px;min-height:18px"></p>';
+  const pri=bt+'background:var(--btn);color:#fff',alt=bt+'background:var(--alt);color:var(--altx)';
+  const card=h=>`<div style="width:100%;max-width:340px;background:var(--card);border-radius:12px;padding:24px;box-shadow:0 2px 12px rgba(0,0,0,.12)">${h}</div>`;
+  const hd=(t,p)=>`<h1 style="font-size:20px;margin:0 0 6px;color:var(--tx)">${t}</h1><p style="margin:0 0 16px;color:var(--mu);font-size:14px">${p}</p>`;
+  const er='<p id="lkErr" style="margin:0 0 10px;color:var(--red);font-size:14px;min-height:18px"></p>';
   const V={
     welcome:()=>card(hd('Benvenuto','Hai già un backup su Google Drive o vuoi iniziare da zero?')+`<button data-lk="rest" style="${pri}">Ripristina da Google Drive</button><button data-lk="new" style="${alt}">Inizia da zero</button>`),
     rest:()=>card(hd('Ripristina da Google Drive','Inserisci la password del backup. Diventerà anche la password di accesso all\'app.')+`<input id="lk1" type="password" placeholder="Password del backup" autocomplete="current-password" style="${st}">${er}<button data-lk="restGo" style="${pri}">Ripristina</button><button data-lk="back" style="${alt}">Indietro</button>`),
@@ -700,6 +705,12 @@ document.addEventListener('click',onPw);
 document.addEventListener('click',onClick);
 document.addEventListener('input',onInput);
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeLb()});
+document.addEventListener('change',ev=>{   // spunta "Tema scuro" nella Home
+  const t=ev.target;
+  if(!t.matches||!t.matches('[data-theme-toggle]'))return;
+  try{localStorage.setItem(THEME_KEY,t.checked?'dark':'light')}catch(e){}
+  applyTheme();
+});
 addEventListener('beforeunload',e=>{if(dirty){e.preventDefault();e.returnValue=''}});
 bind('#bAdd','click',()=>PAGE?addTo():chooser());
 bind('#bEdit','click',toggleEdit);
