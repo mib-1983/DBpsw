@@ -60,6 +60,28 @@ const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 const kb=()=>Math.round((localStorage.getItem(KEY)||'').length/1024);
 
 /* ---------- dati (localStorage) ---------- */
+/* Formato dei dati: {entries:[{id,cat,f,photos,m}], del:{id:oraEliminazione}}
+   m = ora dell'ultima modifica della voce; del = voci eliminate (servono a propagare le eliminazioni tra dispositivi) */
+const norm=d=>{d.del=d.del&&typeof d.del==='object'&&!Array.isArray(d.del)?d.del:{};return d};
+function mergeData(a,b){   // unisce due archivi: per ogni voce vince la modifica più recente; le eliminazioni si sommano
+  const mp=new Map();
+  [...a.entries,...b.entries].forEach(e=>{
+    if(!e||!e.id||!e.f||!cat(e.cat))return;
+    const x=mp.get(e.id);
+    if(!x||(e.m||0)>(x.m||0))mp.set(e.id,e);   // a parità vince la prima (quella di questo dispositivo)
+  });
+  const del={};
+  [a.del||{},b.del||{}].forEach(o=>Object.keys(o).forEach(k=>{del[k]=Math.max(del[k]||0,+o[k]||0)}));
+  const entries=[];
+  mp.forEach((e,id)=>{
+    if(del[id]&&del[id]>=(e.m||0))return;   // eliminata dopo l'ultima modifica
+    delete del[id];
+    entries.push(e);
+  });
+  const lim=Date.now()-365*86400000;
+  Object.keys(del).forEach(k=>{if(del[k]<lim)delete del[k]});
+  return{entries,del};
+}
 let dKey=null,dSalt=null,legacy=false,blocked=false,bootP=null;
 async function atRestKey(pw,salt){   // chiave AES derivata dalla password di accesso, tenuta solo in memoria
   if(dKey&&(!salt||b64(salt)===b64(dSalt)))return dKey;
@@ -70,19 +92,19 @@ async function atRestKey(pw,salt){   // chiave AES derivata dalla password di ac
 const plainData=()=>{try{const o=JSON.parse(localStorage.getItem(KEY));return o&&Array.isArray(o.entries)?o:null}catch(e){return null}};
 async function load(){
   const r=localStorage.getItem(KEY);
-  if(!r)return{entries:[]};
+  if(!r)return norm({entries:[]});
   let o=null;
   try{o=JSON.parse(r)}catch(e){}
-  if(o&&Array.isArray(o.entries)){legacy=true;return o}   // vecchio formato in chiaro: lo cifro subito dopo
+  if(o&&Array.isArray(o.entries)){legacy=true;return norm(o)}   // vecchio formato in chiaro: lo cifro subito dopo
   if(o&&o.ct){   // se non riesco a decifrare, errore: NON restituisco un archivio vuoto
     const key=await atRestKey(accessPw(),unb64(o.salt));
     const pt=await crypto.subtle.decrypt({name:'AES-GCM',iv:unb64(o.iv)},key,unb64(o.ct));
     const d=JSON.parse(td.decode(pt));
     if(!Array.isArray(d.entries))throw new Error('formato');
-    return d;
+    return norm(d);
   }
   try{localStorage.setItem(KEY+'_bak',r)}catch(e){}   // dati illeggibili: ne tengo una copia
-  return{entries:[]};
+  return norm({entries:[]});
 }
 async function persist(silent){
   if(blocked)return false;
@@ -107,7 +129,8 @@ function backupReminder(){
   lb(`<div class="sheet"><h1>Promemoria backup</h1><p class="mu">Sono passati più di 30 giorni dall'ultimo backup delle password. Ti consiglio di esportarne uno aggiornato.</p><div class="grp"><button class="row" data-act="exp"><div><strong>Esporta ora</strong><span class="r2"><span>Crea subito un backup cifrato delle password</span></span></div>${ic('right')}</button><button class="row" data-act="close"><div><strong>Più tardi</strong><span class="r2"><span>Te lo ricorderò alla prossima apertura della Home</span></span></div>${ic('right')}</button></div></div>`);
 }
 
-let data={entries:[]},draft=null,edit=false,dirty=false,S={v:PAGE?'list':'home'},q='',prev=null;
+let data={entries:[],del:{}},draft=null,edit=false,dirty=false,S={v:PAGE?'list':'home'},q='',prev=null;
+let delMode=false,sel=new Set();   // modalità cestino: voci selezionate da eliminare
 const src=()=>edit?draft:data;
 const ent=id=>src().entries.find(e=>e.id===id);
 const OWN={ter:'own',doc:'nome'};                  // categorie raggruppate per proprietario: campo che lo contiene
@@ -164,7 +187,7 @@ function expBlock(){
 function home(){
   const n=id=>src().entries.filter(e=>e.cat===id).length;
   return `<h1>Le mie password</h1><p class="mu sub"><span style="display:block">Ultima modifica: ${lastMod()?new Date(lastMod()).toLocaleString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'}):'—'}</span><span style="display:block;margin-top:8px">Password salvate: ${src().entries.length}</span></p>${expBlock()}<div class="grid">${C.map(c=>`<a class="cat" href="${c.p}">${ic(c.i)}<span>${c.n}</span><small>${pl(n(c.id))}</small></a>`).join('')}</div>
-    <div class="bk">${driveBox()}${bkGrp(`Ultimo backup manuale: ${lastBackup()?new Date(lastBackup()).toLocaleDateString('it-IT'):'mai'}`,`<button data-act="exp" style="${BF}">Esporta backup</button><button data-act="imp" style="${BF}">Importa backup</button>`,'',18,'flex')}<div style="margin-top:18px"><button data-cx="pwOpen" style="${BF}">Cambia password di accesso</button></div><small style="display:block;margin-top:32px">Spazio usato: ${kb()} KB su circa 5000 KB</small><label class="thm"><input type="checkbox" data-theme-toggle ${themeNow()==='dark'?'checked':''}>Tema scuro</label><small style="display:block;margin-top:8px">Version 2.4.3</small></div>`;
+    <div class="bk">${driveBox()}${bkGrp(`Ultimo backup manuale: ${lastBackup()?new Date(lastBackup()).toLocaleDateString('it-IT'):'mai'}`,`<button data-act="exp" style="${BF}">Esporta backup</button><button data-act="imp" style="${BF}">Importa backup</button>`,'',18,'flex')}<div style="margin-top:18px"><button data-cx="pwOpen" style="${BF}">Cambia password di accesso</button></div><small style="display:block;margin-top:32px">Spazio usato: ${kb()} KB su circa 5000 KB</small><label class="thm"><input type="checkbox" data-theme-toggle ${themeNow()==='dark'?'checked':''}>Tema scuro</label><small style="display:block;margin-top:8px">Version 2.3.9</small></div>`;
 }
 const row=(e,showCat)=>{
   const a=e.cat==='doc'?(e.f.scad?'Scade il '+fmt('d',e.f.scad):e.f.email||e.f.user||''):(e.f.email||e.f.user||e.f.tipo||''),p=e.f.pw||'';
@@ -216,16 +239,19 @@ function detail(){
   if(!edit&&!h.includes('class="f"'))h+='<p class="mu">Nessun dato. Attiva la modifica (matita in alto) per compilare la voce.</p>';
   return h+(edit?'<button class="del" data-act="del">Elimina voce</button>'+ownData()+tipiData()+emailData():'');
 }
+const delBar=()=>`<div class="grp" style="margin-bottom:16px"><button class="row" data-act="delGo"><div><strong>Elimina selezionate (${sel.size})</strong><span class="r2"><span>Tocca le voci per selezionarle</span></span></div>${ic('trash')}</button><button class="row" data-act="delEnd"><div><strong>Annulla</strong><span class="r2"><span>Esci senza eliminare</span></span></div>${ic('x')}</button></div>`;
 function render(){
   if(S.v==='detail'&&!ent(S.id))S={v:'list',own:S.own};
   document.body.classList.toggle('edit',edit);
   $('#bEdit').classList.toggle('on',edit);
   const bd=$('#bDel');if(bd)bd.classList.toggle('on',delMode);
   $('#bSave').disabled=!dirty;$('#bSave').classList.toggle('on',dirty);
-  $('#main').innerHTML=(delMode&&S.v!=='detail'?delBar():'')+{home,list,detail,search:results}[S.v]();
+  const showBar=delMode&&(S.v==='search'||(S.v==='list'&&(!OWN[PAGE]||S.own!=null)));
+  $('#main').innerHTML=(showBar?delBar():'')+{home,list,detail,search:results}[S.v]();
 }
 function go(s){
   S=s;
+  if(delMode&&(s.v==='detail'||(s.v==='list'&&OWN[PAGE]&&s.own==null))){delMode=false;sel=new Set()}
   if(s.v!=='search'){q='';$('#q').value=''}
   render();$('#main').scrollTop=0;
 }
@@ -294,7 +320,7 @@ async function decryptJSON(text,pw){
 let impPw=null;   // password inserita prima di scegliere il file da importare
 function pwSheet(mode){   // mode: 'exp' (imposta password) | 'imp' (chiedi password) | 'drv' (ripristino da Drive)
   const exp=mode==='exp';
-  const sub={exp:'Crea il file di backup cifrato',imp:'Poi scegli il file da importare',drv:'Scarica e ripristina da Google Drive'}[mode]||'';
+  const sub={exp:'Crea il file di backup cifrato',imp:'Poi scegli il file da importare',drv:'Scarica da Google Drive e unisci ai dati di questo dispositivo'}[mode]||'';
   lb(`<div class="sheet"><h1>${exp?'Imposta una password per il backup':'Password del backup'}</h1><div class="grp">
     <div class="f"><div class="fv"><label>Password</label><input id="pw1" type="password" autocomplete="${exp?'new-password':'current-password'}"></div></div>
     ${exp?'<div class="f"><div class="fv"><label>Conferma password</label><input id="pw2" type="password" autocomplete="new-password"></div></div>':''}
@@ -316,6 +342,12 @@ async function saveAll(){
   if(!edit||!dirty)return;
   const old=data;
   draft.entries=draft.entries.filter(e=>Object.entries(e.f).some(([k,v])=>k!==OWN[e.cat]&&v)||(e.photos||[]).length);   // scarta voci vuote
+  const now=Date.now(),sig=e=>JSON.stringify([e.f,e.photos||[]]);
+  const om=new Map(old.entries.map(e=>[e.id,sig(e)]));
+  draft.entries.forEach(e=>{if(om.get(e.id)!==sig(e))e.m=now});   // segna l'ora solo sulle voci cambiate
+  const keep=new Set(draft.entries.map(e=>e.id));
+  draft.del={...(draft.del||{})};
+  old.entries.forEach(e=>{if(!keep.has(e.id))draft.del[e.id]=now});   // voci sparite = eliminate
   data=draft;
   if(!await persist()){data=old;toast('Salvataggio non riuscito: spazio pieno. Riduci le foto o esporta un backup.');return}
   endEdit();render();toast('Salvato');
@@ -327,19 +359,21 @@ function toggleEdit(){
   if(dirty&&!confirm(MSG))return;
   endEdit();render();
 }
-let delMode=false,sel=new Set();
+/* ---------- cestino: selezione ed eliminazione di più voci ---------- */
 function toggleDel(){
   if(delMode){endDel();return}
   if(edit||dirty){toast('Salva o annulla le modifiche prima di eliminare');return}
+  if(S.v==='detail'){toast('Torna all\'elenco per eliminare');return}
+  if(S.v==='list'&&OWN[PAGE]&&S.own==null){toast('Apri prima un proprietario');return}
   delMode=true;sel=new Set();render();
 }
 function endDel(){delMode=false;sel=new Set();render()}
-const delBar=()=>`<div class="grp" style="margin-bottom:16px"><button class="row" data-act="delGo"><div><strong>Elimina selezionate (${sel.size})</strong><span class="r2"><span>Tocca le voci per selezionarle</span></span></div>${ic('trash')}</button><button class="row" data-act="delEnd"><div><strong>Annulla</strong><span class="r2"><span>Esci senza eliminare</span></span></div>${ic('x')}</button></div>`;
 async function delSel(){
   if(!sel.size){toast('Seleziona almeno una voce');return}
   if(!confirm(sel.size===1?'Eliminare definitivamente 1 voce?':'Eliminare definitivamente '+sel.size+' voci?'))return;
-  const old=data,n=sel.size;
-  data={entries:data.entries.filter(e=>!sel.has(e.id))};
+  const old=data,n=sel.size,now=Date.now(),del={...(data.del||{})};
+  sel.forEach(id=>{del[id]=now});
+  data={entries:data.entries.filter(e=>!sel.has(e.id)),del};
   if(!await persist()){data=old;toast('Eliminazione non riuscita');return}
   endDel();toast(n===1?'Voce eliminata':n+' voci eliminate');
   if(driveOn())driveSync(false);
@@ -366,11 +400,13 @@ async function importData(ev){
   try{
     if(!Array.isArray(d.entries))throw 0;
     const ids=new Set(data.entries.map(e=>e.id));
-    const n=d.entries.filter(e=>e&&e.id&&e.f&&cat(e.cat)&&!ids.has(e.id));   // unisce senza toccare i dati esistenti
-    const old=data;
-    data={entries:data.entries.concat(n)};
+    const n=d.entries.filter(e=>e&&e.id&&e.f&&cat(e.cat)&&!ids.has(e.id));   // aggiunge le voci mancanti senza toccare quelle esistenti
+    const old=data,now=Date.now(),del={...(data.del||{})};
+    n.forEach(e=>{e.m=now;delete del[e.id]});   // le voci importate tornano valide anche se erano state eliminate
+    data={entries:data.entries.concat(n),del};
     if(!await persist()){data=old;throw 1}
     render();toast(n.length+' voci importate');
+    if(n.length&&driveOn())driveSync(false);
   }catch(x){toast('Backup non valido o spazio insufficiente')}
 }
 function onClick(ev){
@@ -384,8 +420,12 @@ function onClick(ev){
   switch(d.act){
     case 'open':{const c=cat(ent(d.id).cat);if(c.id===PAGE)go({v:'detail',id:d.id,own:S.own});else nav(c.p+'#'+d.id);break}
     case 'back':go(up(e));break;
+    case 'home':nav('index.html');break;
     case 'own':go({v:'list',own:d.o});break;
     case 'obk':go({v:'list'});break;
+    case 'tgl':sel.has(d.id)?sel.delete(d.id):sel.add(d.id);render();break;
+    case 'delGo':delSel();break;
+    case 'delEnd':endDel();break;
     case 'eye':{const s=$('#v-'+d.k),on=s.dataset.on==='1';s.dataset.on=on?'':'1';s.textContent=on?'••••••••':e.f[d.k];b.innerHTML=ic(on?'eye':'eyeoff');break}
     case 'eyeIn':{const i=b.parentNode.querySelector('input');i.type=i.type==='password'?'text':'password';b.innerHTML=ic(i.type==='password'?'eye':'eyeoff');break}
     case 'copy':{const t=cat(e.cat).f.find(x=>x[0]===d.k)[2];copy(fmt(t,e.f[d.k]));break}
@@ -411,18 +451,14 @@ function onClick(ev){
       document.body.appendChild(a);a.click();a.remove();
       setTimeout(()=>URL.revokeObjectURL(a.href),1000);
       setLastBackup();pendingFile=null;closeLb();break}
-    case 'drvSync':driveSync(true);break;
-    case 'drvLink':driveLinkFlow();break;
+    case 'drvSync':if(edit||dirty)toast('Salva o annulla le modifiche prima di sincronizzare');else driveSync(true);break;
+    case 'drvLink':driveLink().then(ok=>{if(ok)driveSync(true)});break;
     case 'drvOff':driveUnlink();break;
-    case 'offLink':closeLb();driveLinkFlow();break;
+    case 'offLink':closeLb();driveLink().then(ok=>{if(ok)driveSync(true)});break;
     case 'drvRes':if(edit)toast('Salva o annulla le modifiche prima di ripristinare');else pwSheet('drv');break;
     case 'drvGo':{const p=$('#pw1').value;if(!p){toast('Inserisci la password');break}closeLb();driveRestore(p);break}
     case 'expGo':{const p1=$('#pw1').value,p2=$('#pw2').value;if(p1.length<6){toast('Password troppo corta (minimo 6 caratteri)');break}if(p1!==p2){toast('Le password non coincidono');break}closeLb();exportData(p1);break}
     case 'impGo':{const p=$('#pw1').value;if(!p){toast('Inserisci la password');break}impPw=p;closeLb();$('#fImp').click();break}
-    case 'tgl':sel.has(d.id)?sel.delete(d.id):sel.add(d.id);render();break;
-    case 'delGo':delSel();break;
-    case 'delEnd':endDel();break;
-    case 'home':nav('index.html');break;
   }
 }
 function onInput(ev){
@@ -487,7 +523,7 @@ function showLock(){
       const p=$('#lk1').value;if(!p)return err('Inserisci la password');
       b.disabled=true;
       try{sessionStorage.setItem('pwm_s',p)}catch(e){}   // serve a cifrare i dati ripristinati
-      const lp=plainData();if(lp)data=lp;                // non perdere eventuali dati vecchi in chiaro
+      const lp=plainData();if(lp)data=norm(lp);          // non perdere eventuali dati vecchi in chiaro
       const ok=await driveRestore(p,err);
       b.disabled=false;
       if(!ok){try{sessionStorage.removeItem('pwm_s')}catch(e){}return}
@@ -591,15 +627,25 @@ async function driveUpload(tok,id,text){
   }
   if(!r.ok)throw new Error('caricamento '+r.status);
 }
-async function driveSync(manual){
-  const pw=accessPw();
-  if(!pw)return;
+/* Sincronizzazione: scarica il file da Drive, lo unisce ai dati di questo dispositivo (vince la modifica più recente
+   di ogni voce), salva il risultato qui e lo ricarica su Drive. Resta un solo file aggiornato. */
+let syncBusy=false,syncAgain=false;
+async function driveSync(manual,opt){
+  if(!accessPw())return;
+  if(syncBusy){syncAgain=true;return}
+  syncBusy=true;
+  try{await driveSyncRun(manual,opt||{},accessPw())}
+  finally{syncBusy=false;if(syncAgain){syncAgain=false;driveSync(false)}}
+}
+async function driveSyncRun(manual,opt,pw){
+  const pend=()=>{try{localStorage.setItem(DPK,'1')}catch(x){}};
+  const done=()=>{if(S.v==='home')render()};
   let tok;
   try{tok=await ensureToken()}
   catch(e){
-    try{localStorage.setItem(DPK,'1')}catch(x){}
+    pend();
     if(manual)toast('Accesso a Google non riuscito: '+e.message);
-    if(S.v==='home')render();
+    done();
     return;
   }
   const who=await driveWho(tok).catch(()=>'');
@@ -607,25 +653,52 @@ async function driveSync(manual){
   if(saved&&who&&who!==saved){
     dTok='';dExp=0;
     try{sessionStorage.removeItem('pwm_dt');sessionStorage.removeItem('pwm_de')}catch(x){}
-    try{localStorage.setItem(DPK,'1')}catch(x){}
+    pend();
     toast('Account diverso: usa '+saved);
-    if(S.v==='home')render();
+    done();
     return;
   }
   if(manual){try{localStorage.setItem(DK,'1')}catch(x){}}
-  if(!data.entries.length){if(manual)toast('Nessun dato da salvare. Usa "Ripristina da Drive".');if(S.v==='home')render();return}
+  let changed=false;
   try{
-    const enc=await encryptJSON(data,pw);
     const id=await driveFind(tok);
-    await driveUpload(tok,id,enc);
+    let merged=null;
+    if(id){
+      const r=await fetch('https://www.googleapis.com/drive/v3/files/'+id+'?alt=media',{headers:{Authorization:'Bearer '+tok}});
+      if(!r.ok)throw new Error('download '+r.status);
+      const text=await r.text();
+      let d=null;
+      for(const p of [pw,opt.alt]){   // opt.alt: vecchia password, dopo un cambio password
+        if(!p||d)continue;
+        try{d=await decryptJSON(text,p)}catch(e){}
+      }
+      if(!d||!Array.isArray(d.entries)){
+        pend();
+        toast('Il backup su Drive è cifrato con un\'altra password: non l\'ho modificato');
+        done();
+        return;
+      }
+      if(edit||dirty){pend();if(manual)toast('Salva o annulla le modifiche, poi sincronizza');done();return}
+      merged=mergeData(data,norm(d));
+    }else{
+      if(!data.entries.length){if(manual)toast('Nessun dato da salvare. Usa "Ripristina da Drive".');done();return}
+      merged=data;
+    }
+    changed=JSON.stringify(merged)!==JSON.stringify(data);
+    if(changed){
+      const old=data;
+      data=merged;
+      if(!await persist(true)){data=old;changed=false;throw new Error('spazio pieno')}
+    }
+    await driveUpload(tok,id,await encryptJSON(merged,pw));
     if(who&&!saved){try{localStorage.setItem(DEK,who)}catch(x){}}
     try{localStorage.setItem(DK,'1');localStorage.setItem(DLK,Date.now());localStorage.removeItem(DPK)}catch(x){}
-    toast('Salvato su Google Drive');
+    toast(changed?'Sincronizzato: dati aggiornati da Drive':'Salvato su Google Drive');
   }catch(e){
-    try{localStorage.setItem(DPK,'1')}catch(x){}
+    pend();
     toast('Drive: '+e.message);
   }
-  if(S.v==='home')render();
+  if(changed||S.v==='home')render();
 }
 async function driveLink(){
   let tok;
@@ -649,18 +722,7 @@ function driveUnlink(){
   toast('Drive scollegato');
   render();
 }
-async function driveLinkFlow(){   // collega Drive; se trova un backup chiede se ripristinarlo
-  const ok=await driveLink();
-  if(!ok)return;
-  let found=false;
-  try{found=!!await driveFind(await ensureToken())}catch(e){}
-  if(found){
-    lb(`<div class="sheet"><h1>Backup trovato su Drive</h1><p class="mu">Su Google Drive c'è già un backup. Vuoi ripristinarlo ora? Le voci che hai già qui non vengono toccate.</p><div class="grp"><button class="row" data-act="drvRes"><div><strong>Ripristina ora</strong><span class="r2"><span>Ti chiedo la password del backup</span></span></div>${ic('right')}</button><button class="row" data-act="close"><div><strong>Più tardi</strong><span class="r2"><span>Potrai farlo dal pulsante Ripristina nella Home</span></span></div>${ic('right')}</button></div></div>`);
-    return;
-  }
-  if(data.entries.length)driveSync(true);
-}
-async function driveRestore(pw,err){
+async function driveRestore(pw,err){   // scarica da Drive e unisce ai dati di questo dispositivo
   const fail=m=>{(err||toast)(m);return false};
   let tok,text;
   try{
@@ -676,14 +738,12 @@ async function driveRestore(pw,err){
   catch(e){return fail('Password errata o backup non valido')}
   try{
     if(!Array.isArray(d.entries))throw 0;
-    const ids=new Set(data.entries.map(e=>e.id));
-    const n=d.entries.filter(e=>e&&e.id&&e.f&&cat(e.cat)&&!ids.has(e.id));
     const old=data;
-    data={entries:data.entries.concat(n)};
+    data=mergeData(data,norm(d));
     if(!await persist()){data=old;throw 1}
     try{localStorage.setItem(DK,'1')}catch(x){}
     try{const w=await driveWho(tok);if(w)localStorage.setItem(DEK,w)}catch(x){}
-    render();toast(n.length+' voci ripristinate');
+    render();toast('Ripristino completato: '+data.entries.length+' voci');
     return true;
   }catch(x){return fail('Backup non valido o spazio insufficiente')}
 }
@@ -725,7 +785,7 @@ async function changePw(exp){
     return;
   }
   touch();render();toast('Password cambiata');
-  if(driveOn())setTimeout(()=>driveSync(true),1500);   // aggiorna il backup su Drive con la nuova password
+  if(driveOn())setTimeout(()=>driveSync(true,{alt:oldPw}),1500);   // aggiorna il backup su Drive con la nuova password (il file su Drive è ancora cifrato con la vecchia)
   if(exp)exportData(accessPw());   // apre la finestra di salvataggio con la nuova password
 }
 function onPw(ev){
@@ -759,7 +819,7 @@ bind('#fImp','change',importData);
 $('#bar').innerHTML=C.map(c=>`<a href="${c.p}"${c.id===PAGE?' class="on"':''}>${ic(c.i)}${c.s}</a>`).join('');
 [['#bHome','home'],['#bAdd','plus'],['#bEdit','edit'],['#bSave','save']].forEach(([s,n])=>{$(s).innerHTML=ic(n)});
 $('#bEdit').disabled=!PAGE;   // in Home non c'è nulla da modificare
-const bDel=document.createElement('button');bDel.id='bDel';bDel.setAttribute('aria-label','Elimina password');bDel.innerHTML=ic('trash');bDel.disabled=!PAGE;
+const bDel=document.createElement('button');bDel.id='bDel';bDel.setAttribute('aria-label','Elimina password');bDel.innerHTML=ic('trash');bDel.disabled=!PAGE;   // cestino accanto alla matita
 $('#bEdit').after(bDel);
 bDel.addEventListener('click',toggleDel);
 if(!expired())boot();   // se l'app è già sbloccata in questa sessione; altrimenti parte da unlock()
