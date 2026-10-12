@@ -164,7 +164,7 @@ function expBlock(){
 function home(){
   const n=id=>src().entries.filter(e=>e.cat===id).length;
   return `<h1>Le mie password</h1><p class="mu sub"><span style="display:block">Ultima modifica: ${lastMod()?new Date(lastMod()).toLocaleString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'}):'—'}</span><span style="display:block;margin-top:8px">Password salvate: ${src().entries.length}</span></p>${expBlock()}<div class="grid">${C.map(c=>`<a class="cat" href="${c.p}">${ic(c.i)}<span>${c.n}</span><small>${pl(n(c.id))}</small></a>`).join('')}</div>
-    <div class="bk">${driveBox()}${bkGrp(`Ultimo backup manuale: ${lastBackup()?new Date(lastBackup()).toLocaleDateString('it-IT'):'mai'}`,`<button data-act="exp" style="${BF}">Esporta backup</button><button data-act="imp" style="${BF}">Importa backup</button>`,'',18,'flex')}<div style="margin-top:18px"><button data-cx="pwOpen" style="${BF}">Cambia password di accesso</button></div><small style="display:block;margin-top:32px">Spazio usato: ${kb()} KB su circa 5000 KB</small><label class="thm"><input type="checkbox" data-theme-toggle ${themeNow()==='dark'?'checked':''}>Tema scuro</label><small style="display:block;margin-top:8px">Version 2.3.8</small></div>`;
+    <div class="bk">${driveBox()}${bkGrp(`Ultimo backup manuale: ${lastBackup()?new Date(lastBackup()).toLocaleDateString('it-IT'):'mai'}`,`<button data-act="exp" style="${BF}">Esporta backup</button><button data-act="imp" style="${BF}">Importa backup</button>`,'',18,'flex')}<div style="margin-top:18px"><button data-cx="pwOpen" style="${BF}">Cambia password di accesso</button></div><small style="display:block;margin-top:32px">Spazio usato: ${kb()} KB su circa 5000 KB</small><label class="thm"><input type="checkbox" data-theme-toggle ${themeNow()==='dark'?'checked':''}>Tema scuro</label><small style="display:block;margin-top:8px">Version 2.4.3</small></div>`;
 }
 const row=(e,showCat)=>{
   const a=e.cat==='doc'?(e.f.scad?'Scade il '+fmt('d',e.f.scad):e.f.email||e.f.user||''):(e.f.email||e.f.user||e.f.tipo||''),p=e.f.pw||'';
@@ -176,7 +176,7 @@ function viewOwners(all){
   const m=new Map();
   all.forEach(e=>m.set(own(e),(m.get(own(e))||0)+1));
   const ks=[...m.keys()].sort((a,b)=>oname(a).localeCompare(oname(b),'it'));
-  return `<h1>${cat(PAGE).n}</h1>`+(ks.length?`<div class="grp">${ks.map(k=>`<button class="row" data-act="own" data-o="${esc(k)}"><div><strong>${esc(oname(k))}</strong><span class="r2"><span>${m.get(k)} ${UN[PAGE][m.get(k)===1?0:1]}</span></span></div>${ic('right')}</button>`).join('')}</div>`:`<p class="mu">Nessun proprietario. Usa il pulsante + in alto per aggiungere il primo ${UN[PAGE][0]}.</p>`);
+  return `<button class="back" data-act="home">${ic('left')}Home</button><h1>${cat(PAGE).n}</h1>`+(ks.length?`<div class="grp">${ks.map(k=>`<button class="row" data-act="own" data-o="${esc(k)}"><div><strong>${esc(oname(k))}</strong><span class="r2"><span>${m.get(k)} ${UN[PAGE][m.get(k)===1?0:1]}</span></span></div>${ic('right')}</button>`).join('')}</div>`:`<p class="mu">Nessun proprietario. Usa il pulsante + in alto per aggiungere il primo ${UN[PAGE][0]}.</p>`);
 }
 function list(){
   const c=cat(PAGE),all=src().entries.filter(e=>e.cat===PAGE);
@@ -184,7 +184,7 @@ function list(){
   const es=(OWN[PAGE]?all.filter(e=>own(e)===S.own):all).sort((a,b)=>title(a).localeCompare(title(b),'it'));
   const h=OWN[PAGE]
     ?`<button class="back" data-act="obk">${ic('left')}Proprietari</button><h1>${esc(oname(S.own))}</h1>`+(edit?`<div class="grp"><div class="f"><div class="fv"><label>${c.f.find(x=>x[0]===OWN[PAGE])[1]}</label><input data-own="1" autocomplete="off" value="${esc(S.own)}"></div></div></div>`:'')
-    :`<h1>${c.n}</h1>`;
+    :`<button class="back" data-act="home">${ic('left')}Home</button><h1>${c.n}</h1>`;
   return h+(es.length?`<div class="grp">${es.map(e=>row(e)).join('')}</div>`:'<p class="mu">Nessuna voce. Usa il pulsante + in alto per aggiungerne una.</p>');
 }
 function results(){
@@ -422,6 +422,7 @@ function onClick(ev){
     case 'tgl':sel.has(d.id)?sel.delete(d.id):sel.add(d.id);render();break;
     case 'delGo':delSel();break;
     case 'delEnd':endDel();break;
+    case 'home':nav('index.html');break;
   }
 }
 function onInput(ev){
