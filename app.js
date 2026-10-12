@@ -42,6 +42,7 @@ const ICON={
  zap:'<path d="M13 2L3 14h9l-1 8 10-12h-9z"/>',
  user:'<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
  users:'<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
+ trash:'<path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M10 11v6M14 11v6"/>',
  link:'<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14L21 3"/>'
 };
 const ic=n=>`<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">${ICON[n]}</svg>`;
@@ -168,7 +169,8 @@ function home(){
 const row=(e,showCat)=>{
   const a=e.cat==='doc'?(e.f.scad?'Scade il '+fmt('d',e.f.scad):e.f.email||e.f.user||''):(e.f.email||e.f.user||e.f.tipo||''),p=e.f.pw||'';
   const c=showCat?`<span class="rc">${esc(cat(e.cat).n+(OWN[e.cat]&&own(e)?': '+own(e):''))}</span>`:'';
-  return `<button class="row" data-act="open" data-id="${e.id}"><div>${c}<strong>${esc(title(e))}</strong>${a||p?`<span class="r2">${a?`<span>${esc(a)}</span>`:''}${p?`<span class="mono">${esc(p)}</span>`:''}</span>`:''}</div>${ic('right')}</button>`;
+  const ck=delMode?`<span style="font-size:22px;margin-right:12px">${sel.has(e.id)?'☑':'☐'}</span>`:'';
+  return `<button class="row" data-act="${delMode?'tgl':'open'}" data-id="${e.id}">${ck}<div>${c}<strong>${esc(title(e))}</strong>${a||p?`<span class="r2">${a?`<span>${esc(a)}</span>`:''}${p?`<span class="mono">${esc(p)}</span>`:''}</span>`:''}</div>${ic('right')}</button>`;
 };
 function viewOwners(all){
   const m=new Map();
@@ -218,8 +220,9 @@ function render(){
   if(S.v==='detail'&&!ent(S.id))S={v:'list',own:S.own};
   document.body.classList.toggle('edit',edit);
   $('#bEdit').classList.toggle('on',edit);
+  const bd=$('#bDel');if(bd)bd.classList.toggle('on',delMode);
   $('#bSave').disabled=!dirty;$('#bSave').classList.toggle('on',dirty);
-  $('#main').innerHTML={home,list,detail,search:results}[S.v]();
+  $('#main').innerHTML=(delMode&&S.v!=='detail'?delBar():'')+{home,list,detail,search:results}[S.v]();
 }
 function go(s){
   S=s;
@@ -229,6 +232,7 @@ function go(s){
 
 /* ---------- azioni ---------- */
 function addTo(){
+  if(delMode){delMode=false;sel=new Set()}
   if(!edit)startEdit();
   const e={id:uid(),cat:PAGE,f:OWN[PAGE]&&S.own!=null?{[OWN[PAGE]]:S.own}:{}};
   draft.entries.push(e);mark();
@@ -318,9 +322,27 @@ async function saveAll(){
   if(driveOn())driveSync(false);
 }
 function toggleEdit(){
+  if(delMode){delMode=false;sel=new Set()}
   if(!edit){startEdit();render();return}
   if(dirty&&!confirm(MSG))return;
   endEdit();render();
+}
+let delMode=false,sel=new Set();
+function toggleDel(){
+  if(delMode){endDel();return}
+  if(edit||dirty){toast('Salva o annulla le modifiche prima di eliminare');return}
+  delMode=true;sel=new Set();render();
+}
+function endDel(){delMode=false;sel=new Set();render()}
+const delBar=()=>`<div class="grp" style="margin-bottom:16px"><button class="row" data-act="delGo"><div><strong>Elimina selezionate (${sel.size})</strong><span class="r2"><span>Tocca le voci per selezionarle</span></span></div>${ic('trash')}</button><button class="row" data-act="delEnd"><div><strong>Annulla</strong><span class="r2"><span>Esci senza eliminare</span></span></div>${ic('x')}</button></div>`;
+async function delSel(){
+  if(!sel.size){toast('Seleziona almeno una voce');return}
+  if(!confirm(sel.size===1?'Eliminare definitivamente 1 voce?':'Eliminare definitivamente '+sel.size+' voci?'))return;
+  const old=data,n=sel.size;
+  data={entries:data.entries.filter(e=>!sel.has(e.id))};
+  if(!await persist()){data=old;toast('Eliminazione non riuscita');return}
+  endDel();toast(n===1?'Voce eliminata':n+' voci eliminate');
+  if(driveOn())driveSync(false);
 }
 function search(ev){
   q=ev.target.value;
@@ -390,13 +412,16 @@ function onClick(ev){
       setTimeout(()=>URL.revokeObjectURL(a.href),1000);
       setLastBackup();pendingFile=null;closeLb();break}
     case 'drvSync':driveSync(true);break;
-    case 'drvLink':driveLink().then(ok=>{if(ok&&data.entries.length)driveSync(true)});break;
+    case 'drvLink':driveLinkFlow();break;
     case 'drvOff':driveUnlink();break;
-    case 'offLink':closeLb();driveLink().then(ok=>{if(ok&&data.entries.length)driveSync(true)});break;
+    case 'offLink':closeLb();driveLinkFlow();break;
     case 'drvRes':if(edit)toast('Salva o annulla le modifiche prima di ripristinare');else pwSheet('drv');break;
     case 'drvGo':{const p=$('#pw1').value;if(!p){toast('Inserisci la password');break}closeLb();driveRestore(p);break}
     case 'expGo':{const p1=$('#pw1').value,p2=$('#pw2').value;if(p1.length<6){toast('Password troppo corta (minimo 6 caratteri)');break}if(p1!==p2){toast('Le password non coincidono');break}closeLb();exportData(p1);break}
     case 'impGo':{const p=$('#pw1').value;if(!p){toast('Inserisci la password');break}impPw=p;closeLb();$('#fImp').click();break}
+    case 'tgl':sel.has(d.id)?sel.delete(d.id):sel.add(d.id);render();break;
+    case 'delGo':delSel();break;
+    case 'delEnd':endDel();break;
   }
 }
 function onInput(ev){
@@ -623,6 +648,17 @@ function driveUnlink(){
   toast('Drive scollegato');
   render();
 }
+async function driveLinkFlow(){   // collega Drive; se trova un backup chiede se ripristinarlo
+  const ok=await driveLink();
+  if(!ok)return;
+  let found=false;
+  try{found=!!await driveFind(await ensureToken())}catch(e){}
+  if(found){
+    lb(`<div class="sheet"><h1>Backup trovato su Drive</h1><p class="mu">Su Google Drive c'è già un backup. Vuoi ripristinarlo ora? Le voci che hai già qui non vengono toccate.</p><div class="grp"><button class="row" data-act="drvRes"><div><strong>Ripristina ora</strong><span class="r2"><span>Ti chiedo la password del backup</span></span></div>${ic('right')}</button><button class="row" data-act="close"><div><strong>Più tardi</strong><span class="r2"><span>Potrai farlo dal pulsante Ripristina nella Home</span></span></div>${ic('right')}</button></div></div>`);
+    return;
+  }
+  if(data.entries.length)driveSync(true);
+}
 async function driveRestore(pw,err){
   const fail=m=>{(err||toast)(m);return false};
   let tok,text;
@@ -722,6 +758,9 @@ bind('#fImp','change',importData);
 $('#bar').innerHTML=C.map(c=>`<a href="${c.p}"${c.id===PAGE?' class="on"':''}>${ic(c.i)}${c.s}</a>`).join('');
 [['#bHome','home'],['#bAdd','plus'],['#bEdit','edit'],['#bSave','save']].forEach(([s,n])=>{$(s).innerHTML=ic(n)});
 $('#bEdit').disabled=!PAGE;   // in Home non c'è nulla da modificare
+const bDel=document.createElement('button');bDel.id='bDel';bDel.setAttribute('aria-label','Elimina password');bDel.innerHTML=ic('trash');bDel.disabled=!PAGE;
+$('#bEdit').after(bDel);
+bDel.addEventListener('click',toggleDel);
 if(!expired())boot();   // se l'app è già sbloccata in questa sessione; altrimenti parte da unlock()
 
 function boot(){return bootP||(bootP=bootRun())}
